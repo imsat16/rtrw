@@ -57,7 +57,7 @@ Setelah superadmin login, buat data wilayah dari provinsi, kota/kabupaten, kecam
 - `residents`: data warga mengikuti isian Kartu Keluarga Indonesia.
 - `resident_mutations`: catatan LAMPID.
 - `report_exports`: audit ringan export laporan.
-- Storage bucket `resident-documents`: dokumen pendukung warga/KK.
+- Storage bucket `resident-documents`: dokumen pendukung warga/KK. Upload wajib memakai path `{rw_id}/{rt_id}/nama_file` supaya RLS storage bisa scoped per RW/RT.
 
 ## Role dan Akses
 

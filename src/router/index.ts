@@ -15,6 +15,12 @@ const router = createRouter({
     },
     { path: '/export', name: 'export', component: () => import('@/views/ExportView.vue'), meta: { title: 'Export Laporan' } },
     {
+      path: '/pengguna',
+      name: 'users',
+      component: () => import('@/views/UsersView.vue'),
+      meta: { title: 'Manajemen Pengguna' },
+    },
+    {
       path: '/pengaturan',
       name: 'settings',
       component: () => import('@/views/SettingsView.vue'),
@@ -30,6 +36,7 @@ router.beforeEach(async (to) => {
   if (to.name !== 'login' && !auth.isAuthenticated) return { name: 'login' }
   if (to.name === 'login' && auth.isAuthenticated) return { name: 'dashboard' }
   if (to.name === 'regions' && !auth.canManageRegions) return { name: 'dashboard' }
+  if (to.name === 'users' && !auth.canManageUsers) return { name: 'dashboard' }
   return true
 })
 

@@ -15,6 +15,7 @@ export const useAuthStore = defineStore('auth', () => {
   const isAuthenticated = computed(() => Boolean(currentUser.value && profile.value))
   const roleLabelText = computed(() => roleLabel(profile.value?.role))
   const canManageRegions = computed(() => profile.value?.role === 'superadmin' || profile.value?.role === 'rw')
+  const canManageUsers = computed(() => profile.value?.role === 'superadmin' || profile.value?.role === 'rw')
 
   async function loadProfile(user: User | null) {
     currentUser.value = user
@@ -75,6 +76,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     roleLabel: roleLabelText,
     canManageRegions,
+    canManageUsers,
     initialize,
     login,
     logout,

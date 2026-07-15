@@ -4,6 +4,11 @@ export type Gender = 'L' | 'P'
 export type ResidentStatus = 'tetap' | 'sementara'
 export type MutationType = 'lahir' | 'mati' | 'pindah' | 'datang'
 
+export interface Role {
+  id: UserRole
+  label: string
+}
+
 export interface Region {
   id: string
   type: RegionType

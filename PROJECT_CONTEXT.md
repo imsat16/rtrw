@@ -25,10 +25,12 @@ Project ini adalah aplikasi administrasi warga untuk membantu RT/RW mengelola da
 
 ## Data Utama
 
+- `roles`: master role (superadmin, rw, rt) yang direferensikan oleh `profiles.role`.
 - `regions`: provinsi, kota/kabupaten, kecamatan, kelurahan, RW, RT.
 - `family_cards`: nomor KK, kepala keluarga, alamat, scope wilayah.
 - `residents`: NIK, nama, jenis kelamin, TTL, agama, pendidikan, pekerjaan, status kawin, hubungan keluarga, kewarganegaraan, orang tua, alamat, status penduduk.
-- `resident_mutations`: LAMPID lahir, mati, pindah, datang.
+- `resident_mutations`: LAMPID lahir, mati, pindah, datang. Insert pada tabel ini memicu trigger `app_private.apply_resident_mutation()` yang otomatis mengisi `residents.moved_out_at` untuk mutasi `pindah`/`mati`, dan mengosongkannya lagi untuk `datang`.
+- Storage bucket `resident-documents`: path objek wajib `{rw_id}/{rt_id}/nama_file` agar RLS storage bisa scoped per RW/RT seperti tabel lain.
 
 ## File Penting
 
@@ -40,7 +42,6 @@ Project ini adalah aplikasi administrasi warga untuk membantu RT/RW mengelola da
 
 ## Arah Pengembangan Berikutnya
 
-- Tambah manajemen user RW/RT dari UI superadmin/RW.
 - Perketat mapper XLSX per cell bila format kecamatan sudah final.
-- Tambah upload dokumen pendukung per warga atau KK.
+- Tambah upload dokumen pendukung per warga atau KK (ikuti konvensi path `{rw_id}/{rt_id}/...` yang sudah disiapkan di RLS storage).
 - Tambah test RLS di Supabase SQL/RLS tester.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { listFamilyCards, listMutations, listRegions, listResidents } from '@/services/data'
 import { exportReport, type ReportKind } from '@/services/reports'
 import { useAuthStore } from '@/stores/auth'
@@ -11,10 +11,15 @@ const cards = ref<FamilyCard[]>([])
 const residents = ref<Resident[]>([])
 const mutations = ref<ResidentMutation[]>([])
 const exporting = ref('')
+const selectedRtId = ref('')
 const form = reactive({
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
 })
+
+const rtOptions = computed(() =>
+  regions.value.filter((item) => item.type === 'rt' && item.rwId === auth.profile?.rwId),
+)
 
 const reports: Array<{ kind: ReportKind; title: string; description: string }> = [
   {
@@ -50,11 +55,12 @@ const reports: Array<{ kind: ReportKind; title: string; description: string }> =
 ]
 
 async function loadData() {
+  const rtId = auth.profile?.role === 'rw' ? selectedRtId.value || undefined : undefined
   const [regionData, cardData, residentData, mutationData] = await Promise.all([
     listRegions(),
-    listFamilyCards(auth.profile),
-    listResidents(auth.profile),
-    listMutations(auth.profile),
+    listFamilyCards(auth.profile, rtId),
+    listResidents(auth.profile, rtId),
+    listMutations(auth.profile, rtId),
   ])
   regions.value = regionData
   cards.value = cardData
@@ -93,6 +99,13 @@ onMounted(() => {
       <div class="field">
         <label for="year">Tahun</label>
         <input id="year" v-model="form.year" min="2020" type="number" />
+      </div>
+      <div class="field" v-if="auth.profile?.role === 'rw'">
+        <label for="rtFilter">RT</label>
+        <select id="rtFilter" v-model="selectedRtId" @change="loadData">
+          <option value="">Semua RT (gabungan RW)</option>
+          <option v-for="item in rtOptions" :key="item.id" :value="item.id">{{ item.name }}</option>
+        </select>
       </div>
       <button class="secondary-button" type="button" @click="loadData">Refresh Data</button>
     </div>
