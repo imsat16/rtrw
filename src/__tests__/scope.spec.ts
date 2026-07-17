@@ -6,7 +6,8 @@ const rwProfile: UserProfile = {
   uid: 'rw',
   email: 'rw@example.test',
   displayName: 'RW',
-  role: 'rw',
+  roleId: '00000000-0000-4000-8000-000000000002',
+  role: 'ketua_rw',
   rwId: 'rw-07',
 }
 
@@ -14,7 +15,8 @@ const rtProfile: UserProfile = {
   uid: 'rt',
   email: 'rt@example.test',
   displayName: 'RT',
-  role: 'rt',
+  roleId: '00000000-0000-4000-8000-000000000003',
+  role: 'ketua_rt',
   rwId: 'rw-07',
   rtId: 'rt-03',
 }
@@ -23,7 +25,13 @@ describe('matchesUserScope', () => {
   it('allows superadmin to access all records', () => {
     expect(
       matchesUserScope(
-        { uid: 'admin', email: 'admin@test', displayName: 'Admin', role: 'superadmin' },
+        {
+          uid: 'admin',
+          email: 'admin@test',
+          displayName: 'Admin',
+          roleId: '00000000-0000-4000-8000-000000000001',
+          role: 'superadmin',
+        },
         { rwId: 'any' },
       ),
     ).toBe(true)
@@ -43,17 +51,27 @@ describe('matchesUserScope', () => {
 describe('canManageProfileRole', () => {
   it('allows superadmin to manage any role', () => {
     expect(
-      canManageProfileRole({ uid: 'admin', email: 'admin@test', displayName: 'Admin', role: 'superadmin' }, 'rw'),
+      canManageProfileRole(
+        {
+          uid: 'admin',
+          email: 'admin@test',
+          displayName: 'Admin',
+          roleId: '00000000-0000-4000-8000-000000000001',
+          role: 'superadmin',
+        },
+        'ketua_rw',
+      ),
     ).toBe(true)
   })
 
-  it('limits RW to managing rt profiles only', () => {
-    expect(canManageProfileRole(rwProfile, 'rt')).toBe(true)
-    expect(canManageProfileRole(rwProfile, 'rw')).toBe(false)
+  it('limits Ketua RW to subordinate RW/RT profiles', () => {
+    expect(canManageProfileRole(rwProfile, 'ketua_rt')).toBe(true)
+    expect(canManageProfileRole(rwProfile, 'staff_rw')).toBe(true)
+    expect(canManageProfileRole(rwProfile, 'ketua_rw')).toBe(false)
     expect(canManageProfileRole(rwProfile, 'superadmin')).toBe(false)
   })
 
   it('disallows RT from managing any profiles', () => {
-    expect(canManageProfileRole(rtProfile, 'rt')).toBe(false)
+    expect(canManageProfileRole(rtProfile, 'staff_rt')).toBe(false)
   })
 })

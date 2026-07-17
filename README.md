@@ -38,21 +38,31 @@ Untuk project lama yang belum punya publishable key baru, legacy anon key bisa d
 6. Buka SQL Editor, lalu buat profil superadmin untuk user pertama:
 
 ```sql
-insert into public.profiles (id, email, display_name, role)
+insert into public.profiles (id, email, display_name, role_id)
 values (
   'UID_DARI_AUTH_USERS',
   'admin@example.com',
   'Superadmin',
-  'superadmin'
+  (select id from public.master_roles where code = 'superadmin')
 );
 ```
 
-Setelah superadmin login, buat data wilayah dari provinsi, kota/kabupaten, kecamatan, kelurahan, RW, lalu RT. Untuk akun RW/RT, buat user di Supabase Auth dan tambahkan baris `profiles` dengan `role`, `rw_id`, `rt_id`, serta scope wilayah yang sesuai.
+Setelah superadmin login, buat data wilayah dari provinsi, kota/kabupaten, kecamatan, kelurahan, RW, lalu RT. Akun berikutnya dibuat langsung melalui halaman Manajemen Pengguna.
+
+Deploy Edge Function agar Superadmin dapat membuat akun langsung dari aplikasi:
+
+```sh
+supabase functions deploy create-user --project-ref qnlwdswbraukuxbzunqh --no-verify-jwt
+```
+
+Function memakai secret/service key bawaan environment Supabase di sisi server. Jangan menambahkan key tersebut ke `.env.local` frontend. Opsi `--no-verify-jwt` hanya mematikan pemeriksaan JWT legacy di gateway; function tetap memvalidasi access token dengan `auth.getUser()`. Pembuatan akun hanya dapat dilakukan Superadmin, sedangkan perubahan dan penghapusan akun mengikuti role serta scope RW pemanggil. Email, password, dan nama tampilan disinkronkan dengan Supabase Authentication. Akun Superadmin dan akun yang sedang digunakan tidak dapat dihapus; trigger database juga melindungi profil Superadmin dari penghapusan langsung.
 
 ## Struktur Supabase
 
-- `profiles`: profil akun, role, dan scope wilayah.
-- `regions`: provinsi, kota/kabupaten, kecamatan, kelurahan, RW, RT.
+- `master_roles`: master lima role tetap; `profiles.role_id` mereferensikan UUID tabel ini.
+- `master_provinces`, `master_cities`, `master_districts`, `master_villages`, `master_rws`, `master_rts`: master wilayah berjenjang.
+- `master_permissions`, `role_permissions`, `user_permissions`: default RBAC per role dan override per pengguna.
+- `profiles`: profil akun dan scope wilayah.
 - `family_cards`: Kartu Keluarga per RT/RW.
 - `residents`: data warga mengikuti isian Kartu Keluarga Indonesia.
 - `resident_mutations`: catatan LAMPID.
@@ -62,10 +72,16 @@ Setelah superadmin login, buat data wilayah dari provinsi, kota/kabupaten, kecam
 ## Role dan Akses
 
 - Superadmin: baca/tulis semua wilayah, RW, RT, KK, warga, dan mutasi.
-- RW: baca data RW sendiri, membuat RT dalam RW sendiri, melihat rekap/export RW.
-- RT: mengisi KK, warga, dan mutasi dalam RT sendiri.
+- Ketua RW, Ketua RT, Staff RW, dan Staff RT: hak awal mengikuti default role serta scope RW/RT.
+- Superadmin dapat mengubah default role dan override akun melalui halaman `Role & Permission`.
 
-Pembatasan akses dilakukan di UI, query Supabase, dan Row Level Security di `supabase/schema.sql`.
+Seluruh primary key dan foreign key ID memakai UUID. Kode stabil seperti `ketua_rw` dan `dashboard.view` disimpan pada kolom `code`, bukan sebagai ID. Pembatasan akses dilakukan di UI, query Supabase, dan Row Level Security di `supabase/schema.sql`.
+
+## Kartu Keluarga dan Data Warga
+
+- Halaman `Kartu Keluarga` memiliki filter RW, RT, dan pencarian nomor KK.
+- Pembuatan KK meminta data dasar kepala keluarga. Function database `create_family_card_with_head` menyimpan KK dan warga kepala keluarga dalam satu transaksi.
+- Halaman `Data Warga` terpisah untuk menambah anggota keluarga, mencari warga, dan mencatat mutasi LAMPID.
 
 ## Export Laporan
 

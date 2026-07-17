@@ -1,0 +1,7 @@
+project_id = "qnlwdswbraukuxbzunqh"
+
+[functions.create-user]
+# Auth tetap wajib dan diverifikasi lewat auth.getUser() di dalam function.
+# Built-in legacy JWT check dimatikan agar kompatibel dengan signing key baru
+# dan agar error autentikasi selalu membawa header CORS dari function.
+verify_jwt = false

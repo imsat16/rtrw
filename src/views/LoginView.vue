@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { RouterLink } from 'vue-router'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
@@ -25,7 +26,7 @@ async function submit() {
     <div>
       <p class="eyebrow">RT/RW Digital</p>
       <h1>Masuk Petugas</h1>
-      <p class="muted">Gunakan akun Supabase Auth yang sudah diberi profil role di tabel profiles.</p>
+      <p class="muted">Masuk menggunakan akun yang telah terdaftar.</p>
     </div>
 
     <p v-if="error" class="alert">{{ error }}</p>
@@ -41,5 +42,6 @@ async function submit() {
     </div>
 
     <button class="primary-button full-width" type="submit" :disabled="auth.loading">Masuk</button>
+    <RouterLink class="login-guide-link" to="/panduan">Buka panduan pengguna</RouterLink>
   </form>
 </template>

@@ -1,12 +1,47 @@
-export type UserRole = 'superadmin' | 'rw' | 'rt'
+export type UserRole = 'superadmin' | 'ketua_rw' | 'ketua_rt' | 'staff_rw' | 'staff_rt'
 export type RegionType = 'province' | 'city' | 'district' | 'village' | 'rw' | 'rt'
+export type PermissionCode =
+  | 'dashboard.view'
+  | 'regions.view'
+  | 'regions.manage'
+  | 'users.view'
+  | 'users.manage'
+  | 'families.view'
+  | 'families.manage'
+  | 'reports.view'
+  | 'reports.export'
+  | 'rbac.manage'
 export type Gender = 'L' | 'P'
 export type ResidentStatus = 'tetap' | 'sementara'
 export type MutationType = 'lahir' | 'mati' | 'pindah' | 'datang'
 
 export interface Role {
-  id: UserRole
+  id: string
+  code: UserRole
   label: string
+  scopeLevel: 'all' | 'rw' | 'rt'
+  sortOrder: number
+}
+
+export interface Permission {
+  id: string
+  code: PermissionCode
+  module: string
+  label: string
+  description: string
+  sortOrder: number
+}
+
+export interface RolePermission {
+  roleId: string
+  permissionId: string
+  allowed: boolean
+}
+
+export interface UserPermission {
+  userId: string
+  permissionId: string
+  allowed: boolean
 }
 
 export interface Region {
@@ -29,6 +64,7 @@ export interface UserProfile {
   uid: string
   email: string
   displayName: string
+  roleId: string
   role: UserRole
   provinceId?: string
   cityId?: string
@@ -43,6 +79,8 @@ export interface FamilyCard {
   kkNumber: string
   headName: string
   address: string
+  memberCount?: number
+  memberNiks?: string[]
   provinceId?: string
   cityId?: string
   districtId?: string

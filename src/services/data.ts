@@ -1,32 +1,45 @@
 import { supabase } from '@/lib/supabase'
-import type { FamilyCard, Region, Resident, ResidentMutation, Role, UserProfile } from '@/types/domain'
+import type {
+  FamilyCard,
+  Permission,
+  PermissionCode,
+  Region,
+  Resident,
+  ResidentMutation,
+  Role,
+  RolePermission,
+  UserPermission,
+  UserProfile,
+  UserRole,
+} from '@/types/domain'
 
-type RegionRow = {
+type MasterRegionRow = {
   id: string
-  type: Region['type']
   name: string
   code: string | null
-  parent_id: string | null
-  province_id: string | null
-  city_id: string | null
-  district_id: string | null
-  village_id: string | null
-  rw_id: string | null
-  rt_id: string | null
   created_at: string | null
   updated_at: string | null
+  province_id?: string
+  city_id?: string
+  district_id?: string
+  village_id?: string
+  rw_id?: string
 }
 
 type RoleRow = {
   id: string
+  code: UserRole
   label: string
+  scope_level: Role['scopeLevel']
+  sort_order: number
 }
 
 type ProfileRow = {
   id: string
   email: string
   display_name: string
-  role: UserProfile['role']
+  role_id: string
+  master_roles: { code: UserRole } | null
   province_id: string | null
   city_id: string | null
   district_id: string | null
@@ -49,6 +62,7 @@ type FamilyCardRow = {
   registered_at: string | null
   created_at: string | null
   updated_at: string | null
+  residents?: Array<{ nik: string }>
 }
 
 type ResidentRow = {
@@ -112,7 +126,13 @@ function clean<T extends Record<string, unknown>>(value: T) {
 }
 
 function mapRole(row: RoleRow): Role {
-  return { id: row.id as UserProfile['role'], label: row.label }
+  return {
+    id: row.id,
+    code: row.code,
+    label: row.label,
+    scopeLevel: row.scope_level,
+    sortOrder: row.sort_order,
+  }
 }
 
 function mapProfile(row: ProfileRow): UserProfile {
@@ -120,7 +140,8 @@ function mapProfile(row: ProfileRow): UserProfile {
     uid: row.id,
     email: row.email,
     displayName: row.display_name,
-    role: row.role,
+    roleId: row.role_id,
+    role: row.master_roles?.code ?? 'staff_rt',
     provinceId: row.province_id ?? undefined,
     cityId: row.city_id ?? undefined,
     districtId: row.district_id ?? undefined,
@@ -128,56 +149,6 @@ function mapProfile(row: ProfileRow): UserProfile {
     rwId: row.rw_id ?? undefined,
     rtId: row.rt_id ?? undefined,
   }
-}
-
-function profilePayload(profile: Omit<UserProfile, 'uid'>) {
-  return clean({
-    email: profile.email,
-    display_name: profile.displayName,
-    role: profile.role,
-    province_id: profile.provinceId,
-    city_id: profile.cityId,
-    district_id: profile.districtId,
-    village_id: profile.villageId,
-    rw_id: profile.rwId,
-    rt_id: profile.rtId,
-    updated_at: new Date().toISOString(),
-  })
-}
-
-function mapRegion(row: RegionRow): Region {
-  return {
-    id: row.id,
-    type: row.type,
-    name: row.name,
-    code: row.code ?? undefined,
-    parentId: row.parent_id ?? undefined,
-    provinceId: row.province_id ?? undefined,
-    cityId: row.city_id ?? undefined,
-    districtId: row.district_id ?? undefined,
-    villageId: row.village_id ?? undefined,
-    rwId: row.rw_id ?? undefined,
-    rtId: row.rt_id ?? undefined,
-    createdAt: row.created_at ?? undefined,
-    updatedAt: row.updated_at ?? undefined,
-  }
-}
-
-function regionPayload(region: Omit<Region, 'id'>, id: string) {
-  return clean({
-    id,
-    type: region.type,
-    name: region.name,
-    code: region.code,
-    parent_id: region.parentId,
-    province_id: region.type === 'province' ? id : region.provinceId,
-    city_id: region.type === 'city' ? id : region.cityId,
-    district_id: region.type === 'district' ? id : region.districtId,
-    village_id: region.type === 'village' ? id : region.villageId,
-    rw_id: region.type === 'rw' ? id : region.rwId,
-    rt_id: region.type === 'rt' ? id : region.rtId,
-    updated_at: new Date().toISOString(),
-  })
 }
 
 function mapFamilyCard(row: FamilyCardRow): FamilyCard {
@@ -186,6 +157,8 @@ function mapFamilyCard(row: FamilyCardRow): FamilyCard {
     kkNumber: row.kk_number,
     headName: row.head_name,
     address: row.address,
+    memberCount: row.residents?.length ?? 0,
+    memberNiks: row.residents?.map((resident) => resident.nik) ?? [],
     provinceId: row.province_id ?? undefined,
     cityId: row.city_id ?? undefined,
     districtId: row.district_id ?? undefined,
@@ -317,69 +290,365 @@ function mutationPayload(mutation: Omit<ResidentMutation, 'id'>) {
 }
 
 export async function getProfile(userId: string) {
-  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single()
+  const { data, error } = await supabase.from('profiles').select('*, master_roles(code)').eq('id', userId).single()
   assertNoError(error)
   return mapProfile(data as ProfileRow)
 }
 
 export async function listRoles() {
-  const { data, error } = await supabase.from('roles').select('*').order('id')
+  const { data, error } = await supabase.from('master_roles').select('*').order('sort_order')
   assertNoError(error)
   return (data as RoleRow[]).map(mapRole)
 }
 
 export async function listProfiles() {
-  const { data, error } = await supabase.from('profiles').select('*').order('display_name')
+  const { data, error } = await supabase.from('profiles').select('*, master_roles(code)').order('display_name')
   assertNoError(error)
   return (data as ProfileRow[]).map(mapProfile)
 }
 
-export async function saveProfile(profile: Omit<UserProfile, 'uid'>, uid: string, isNew: boolean) {
-  const payload = profilePayload(profile)
-  const request = isNew
-    ? supabase.from('profiles').insert({ id: uid, ...payload })
-    : supabase.from('profiles').update(payload).eq('id', uid)
-  const { error } = await request
-  assertNoError(error)
-  return uid
+async function invokeManagedUser(body: Record<string, unknown>) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  assertNoError(sessionError)
+  const accessToken = sessionData.session?.access_token
+  if (!accessToken) throw new Error('Sesi login tidak tersedia. Silakan login ulang.')
+
+  const { data, error } = await supabase.functions.invoke('create-user', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body,
+  })
+  if (error) {
+    let message = error.message
+    const response = (error as { context?: Response }).context
+    if (response) {
+      try {
+        const payload = await response.clone().json() as { message?: string }
+        message = payload.message || message
+      } catch {
+        // Gunakan pesan bawaan client jika response bukan JSON.
+      }
+    }
+    throw new Error(message)
+  }
+  if (!data?.id) throw new Error(data?.message ?? 'Gagal memproses pengguna.')
+  return String(data.id)
 }
 
-export async function deleteProfile(uid: string) {
-  const { error } = await supabase.from('profiles').delete().eq('id', uid)
+async function managedUserPayload(profile: Omit<UserProfile, 'uid' | 'roleId'>) {
+  const { data: role, error } = await supabase
+    .from('master_roles')
+    .select('id')
+    .eq('code', profile.role)
+    .single()
   assertNoError(error)
+  return {
+    email: profile.email,
+    displayName: profile.displayName,
+    roleId: role?.id,
+    provinceId: profile.provinceId,
+    cityId: profile.cityId,
+    districtId: profile.districtId,
+    villageId: profile.villageId,
+    rwId: profile.rwId,
+    rtId: profile.rtId,
+  }
 }
 
-export async function listRegions() {
-  const { data, error } = await supabase.from('regions').select('*').order('type').order('name')
-  assertNoError(error)
-  return (data as RegionRow[]).map(mapRegion)
+export async function createManagedUser(profile: Omit<UserProfile, 'uid' | 'roleId'>, password: string) {
+  return invokeManagedUser({ action: 'create', ...(await managedUserPayload(profile)), password })
+}
+
+export async function updateManagedUser(
+  uid: string,
+  profile: Omit<UserProfile, 'uid' | 'roleId'>,
+  password?: string,
+) {
+  return invokeManagedUser({ action: 'update', uid, ...(await managedUserPayload(profile)), password: password || undefined })
+}
+
+export async function deleteManagedUser(uid: string) {
+  return invokeManagedUser({ action: 'delete', uid })
+}
+
+export async function listRegions(profile: UserProfile | null = null) {
+  const tables = [
+    'master_provinces',
+    'master_cities',
+    'master_districts',
+    'master_villages',
+    'master_rws',
+    'master_rts',
+  ] as const
+  const responses = await Promise.all(tables.map((table) => {
+    let request = supabase.from(table).select('*').order('name')
+    if (table === 'master_rws' && profile?.role !== 'superadmin' && profile?.rwId) {
+      request = request.eq('id', profile.rwId)
+    }
+    if (table === 'master_rts' && profile?.role !== 'superadmin') {
+      if (['ketua_rw', 'staff_rw'].includes(profile?.role ?? '') && profile?.rwId) {
+        request = request.eq('rw_id', profile.rwId)
+      } else if (profile?.rtId) {
+        request = request.eq('id', profile.rtId)
+      }
+    }
+    return request
+  }))
+  responses.forEach(({ error }) => assertNoError(error))
+  const [provinceRows = [], cityRows = [], districtRows = [], villageRows = [], rwRows = [], rtRows = []] = responses.map(
+    ({ data }) => (data ?? []) as MasterRegionRow[],
+  )
+  const provinces = provinceRows.map((row) => toRegion(row, 'province', undefined, { provinceId: row.id }))
+  const cities = cityRows.map((row) =>
+    toRegion(row, 'city', row.province_id, { provinceId: row.province_id, cityId: row.id }),
+  )
+  const cityById = new Map(cities.map((row) => [row.id, row]))
+  const districts = districtRows.map((row) => {
+    const city = cityById.get(row.city_id ?? '')
+    return toRegion(row, 'district', row.city_id, {
+      provinceId: city?.provinceId,
+      cityId: row.city_id,
+      districtId: row.id,
+    })
+  })
+  const districtById = new Map(districts.map((row) => [row.id, row]))
+  const villages = villageRows.map((row) => {
+    const district = districtById.get(row.district_id ?? '')
+    return toRegion(row, 'village', row.district_id, {
+      provinceId: district?.provinceId,
+      cityId: district?.cityId,
+      districtId: row.district_id,
+      villageId: row.id,
+    })
+  })
+  const villageById = new Map(villages.map((row) => [row.id, row]))
+  const rws = rwRows.map((row) => {
+    const village = villageById.get(row.village_id ?? '')
+    return toRegion(row, 'rw', row.village_id, {
+      provinceId: village?.provinceId,
+      cityId: village?.cityId,
+      districtId: village?.districtId,
+      villageId: row.village_id,
+      rwId: row.id,
+    })
+  })
+  const rwById = new Map(rws.map((row) => [row.id, row]))
+  const rts = rtRows.map((row) => {
+    const rw = rwById.get(row.rw_id ?? '')
+    return toRegion(row, 'rt', row.rw_id, {
+      provinceId: rw?.provinceId,
+      cityId: rw?.cityId,
+      districtId: rw?.districtId,
+      villageId: rw?.villageId,
+      rwId: row.rw_id,
+      rtId: row.id,
+    })
+  })
+  const regions = [...provinces, ...cities, ...districts, ...villages, ...rws, ...rts]
+  if (!profile || profile.role === 'superadmin' || !profile.rwId) return regions
+
+  const scopedRw = rws.find((row) => row.id === profile.rwId)
+  const lineageIds = new Set([
+    scopedRw?.provinceId,
+    scopedRw?.cityId,
+    scopedRw?.districtId,
+    scopedRw?.villageId,
+    profile.rwId,
+  ].filter((id): id is string => Boolean(id)))
+
+  return regions.filter((region) => lineageIds.has(region.id) || region.rwId === profile.rwId)
 }
 
 export async function saveRegion(region: Omit<Region, 'id'>, id?: string) {
   const targetId = id || crypto.randomUUID()
-  const payload = regionPayload(region, targetId)
-
+  const config = regionTableConfig(region.type, region.parentId)
+  const payload = clean({
+    id: targetId,
+    name: region.name,
+    code: region.code,
+    [config.parentKey]: config.parentId,
+    updated_at: new Date().toISOString(),
+  })
   const request = id
-    ? supabase.from('regions').update(payload).eq('id', id)
-    : supabase.from('regions').insert(payload)
+    ? supabase.from(config.table).update(payload).eq('id', id)
+    : supabase.from(config.table).insert(payload)
   const { error } = await request
   assertNoError(error)
   return targetId
 }
 
-export async function deleteRegion(id: string) {
-  const { error } = await supabase.from('regions').delete().eq('id', id)
+export async function deleteRegion(region: Pick<Region, 'id' | 'type'>) {
+  const { table } = regionTableConfig(region.type)
+  const { error } = await supabase.from(table).delete().eq('id', region.id)
   assertNoError(error)
 }
 
-export async function listFamilyCards(profile: UserProfile | null, rtId?: string) {
-  let request = supabase.from('family_cards').select('*').order('head_name')
-  if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
-  if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+function toRegion(
+  row: MasterRegionRow,
+  type: Region['type'],
+  parentId?: string,
+  scope: Partial<Region> = {},
+): Region {
+  return {
+    id: row.id,
+    type,
+    name: row.name,
+    code: row.code ?? undefined,
+    parentId,
+    createdAt: row.created_at ?? undefined,
+    updatedAt: row.updated_at ?? undefined,
+    ...scope,
+  }
+}
+
+function regionTableConfig(type: Region['type'], parentId?: string) {
+  const config = {
+    province: { table: 'master_provinces', parentKey: 'province_id' },
+    city: { table: 'master_cities', parentKey: 'province_id' },
+    district: { table: 'master_districts', parentKey: 'city_id' },
+    village: { table: 'master_villages', parentKey: 'district_id' },
+    rw: { table: 'master_rws', parentKey: 'village_id' },
+    rt: { table: 'master_rts', parentKey: 'rw_id' },
+  }[type]
+  return { ...config, parentId }
+}
+
+export async function listPermissions() {
+  const { data, error } = await supabase.from('master_permissions').select('*').order('sort_order')
+  assertNoError(error)
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    code: row.code as PermissionCode,
+    module: String(row.module),
+    label: String(row.label),
+    description: String(row.description),
+    sortOrder: Number(row.sort_order),
+  })) as Permission[]
+}
+
+export async function listRolePermissions() {
+  const { data, error } = await supabase.from('role_permissions').select('*')
+  assertNoError(error)
+  return (data ?? []).map((row) => ({
+    roleId: String(row.role_id),
+    permissionId: String(row.permission_id),
+    allowed: Boolean(row.allowed),
+  })) as RolePermission[]
+}
+
+export async function listUserPermissions(userId?: string) {
+  let request = supabase.from('user_permissions').select('*')
+  if (userId) request = request.eq('user_id', userId)
+  const { data, error } = await request
+  assertNoError(error)
+  return (data ?? []).map((row) => ({
+    userId: String(row.user_id),
+    permissionId: String(row.permission_id),
+    allowed: Boolean(row.allowed),
+  })) as UserPermission[]
+}
+
+export async function saveRolePermission(roleId: string, permissionId: string, allowed: boolean) {
+  const { error } = await supabase
+    .from('role_permissions')
+    .upsert(
+      {
+        role_id: roleId,
+        permission_id: permissionId,
+        allowed,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'role_id,permission_id' },
+    )
+  assertNoError(error)
+}
+
+export async function saveUserPermission(
+  userId: string,
+  permissionId: string,
+  allowed: boolean | null,
+) {
+  const request = allowed === null
+    ? supabase.from('user_permissions').delete().eq('user_id', userId).eq('permission_id', permissionId)
+    : supabase.from('user_permissions').upsert(
+        {
+          user_id: userId,
+          permission_id: permissionId,
+          allowed,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id,permission_id' },
+      )
+  const { error } = await request
+  assertNoError(error)
+}
+
+export async function listFamilyCards(profile: UserProfile | null, rtId?: string, rwId?: string, search?: string) {
+  let request = supabase.from('family_cards').select('*, residents(nik)').order('head_name')
+  if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
+    request = request.eq('rw_id', profile.rwId)
+  }
+  if (profile && ['ketua_rt', 'staff_rt'].includes(profile.role) && profile.rtId) {
+    request = request.eq('rt_id', profile.rtId)
+  }
   if (rtId) request = request.eq('rt_id', rtId)
+  if (rwId) request = request.eq('rw_id', rwId)
+  if (search?.trim()) request = request.ilike('kk_number', `%${search.trim()}%`)
   const { data, error } = await request
   assertNoError(error)
   return (data as FamilyCardRow[]).map(mapFamilyCard)
+}
+
+export async function listResidentsByFamilyCard(familyCardId: string) {
+  const { data, error } = await supabase
+    .from('residents')
+    .select('*')
+    .eq('family_card_id', familyCardId)
+    .order('family_relationship')
+    .order('full_name')
+  assertNoError(error)
+  return (data as ResidentRow[]).map(mapResident)
+}
+
+export type FamilyHeadInput = {
+  kkNumber: string
+  headNik: string
+  headName: string
+  address: string
+  gender: Resident['gender']
+  birthPlace: string
+  birthDate: string
+  religion: string
+  maritalStatus: string
+  registeredAt?: string
+  provinceId?: string
+  cityId?: string
+  districtId?: string
+  villageId?: string
+  rwId?: string
+  rtId?: string
+}
+
+export async function createFamilyCardWithHead(input: FamilyHeadInput) {
+  const { data, error } = await supabase.rpc('create_family_card_with_head', {
+    p_kk_number: input.kkNumber,
+    p_head_nik: input.headNik,
+    p_head_name: input.headName,
+    p_address: input.address,
+    p_gender: input.gender,
+    p_birth_place: input.birthPlace,
+    p_birth_date: input.birthDate,
+    p_religion: input.religion,
+    p_marital_status: input.maritalStatus,
+    p_registered_at: input.registeredAt || null,
+    p_province_id: input.provinceId || null,
+    p_city_id: input.cityId || null,
+    p_district_id: input.districtId || null,
+    p_village_id: input.villageId || null,
+    p_rw_id: input.rwId || null,
+    p_rt_id: input.rtId || null,
+  })
+  assertNoError(error)
+  return String(data)
 }
 
 export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) {
@@ -392,11 +661,49 @@ export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) 
   return id || String(data?.id)
 }
 
-export async function listResidents(profile: UserProfile | null, rtId?: string) {
+export async function updateFamilyCard(card: Omit<FamilyCard, 'id'>, id: string) {
+  const cardId = await saveFamilyCard(card, id)
+  const residentScope = clean({
+    kk_number: card.kkNumber,
+    address: card.address,
+    province_id: card.provinceId,
+    city_id: card.cityId,
+    district_id: card.districtId,
+    village_id: card.villageId,
+    rw_id: card.rwId,
+    rt_id: card.rtId,
+    updated_at: new Date().toISOString(),
+  })
+  const { error: residentsError } = await supabase.from('residents').update(residentScope).eq('family_card_id', id)
+  assertNoError(residentsError)
+  const { error: headError } = await supabase
+    .from('residents')
+    .update({ full_name: card.headName, updated_at: new Date().toISOString() })
+    .eq('family_card_id', id)
+    .eq('family_relationship', 'Kepala Keluarga')
+  assertNoError(headError)
+  return cardId
+}
+
+export async function deleteFamilyCard(id: string) {
+  const { error } = await supabase.from('family_cards').delete().eq('id', id)
+  assertNoError(error)
+}
+
+export async function listResidents(profile: UserProfile | null, rtId?: string, rwId?: string, search?: string) {
   let request = supabase.from('residents').select('*').order('full_name')
-  if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
-  if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+  if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
+    request = request.eq('rw_id', profile.rwId)
+  }
+  if (profile && ['ketua_rt', 'staff_rt'].includes(profile.role) && profile.rtId) {
+    request = request.eq('rt_id', profile.rtId)
+  }
   if (rtId) request = request.eq('rt_id', rtId)
+  if (rwId) request = request.eq('rw_id', rwId)
+  if (search?.trim()) {
+    const term = search.trim().replace(/,/g, '')
+    request = request.or(`nik.ilike.%${term}%,full_name.ilike.%${term}%,kk_number.ilike.%${term}%`)
+  }
   const { data, error } = await request
   assertNoError(error)
   return (data as ResidentRow[]).map(mapResident)
@@ -412,10 +719,19 @@ export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) 
   return id || String(data?.id)
 }
 
+export async function deleteResident(id: string) {
+  const { error } = await supabase.from('residents').delete().eq('id', id)
+  assertNoError(error)
+}
+
 export async function listMutations(profile: UserProfile | null, rtId?: string) {
   let request = supabase.from('resident_mutations').select('*').order('mutation_date', { ascending: false })
-  if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
-  if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+  if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
+    request = request.eq('rw_id', profile.rwId)
+  }
+  if (profile && ['ketua_rt', 'staff_rt'].includes(profile.role) && profile.rtId) {
+    request = request.eq('rt_id', profile.rtId)
+  }
   if (rtId) request = request.eq('rt_id', rtId)
   const { data, error } = await request
   assertNoError(error)
