@@ -14,7 +14,9 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => Boolean(currentUser.value && profile.value))
   const roleLabelText = computed(() => roleLabel(profile.value?.role))
-  const canManageRegions = computed(() => profile.value?.role === 'superadmin' || profile.value?.role === 'rw')
+  const canManageRegions = computed(
+    () => profile.value?.role === 'superadmin' || profile.value?.role === 'rw',
+  )
 
   async function loadProfile(user: User | null) {
     currentUser.value = user
@@ -56,10 +58,18 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function login(email: string, password: string) {
     loading.value = true
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) throw error
-    await loadProfile(data.user)
-    loading.value = false
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+
+      if (error) throw error
+      await loadProfile(data.user)
+    } finally {
+      loading.value = false
+    }
   }
 
   async function logout() {
