@@ -2,7 +2,14 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppModal from '@/components/AppModal.vue'
 import { listFamilyCards, listMutations, listRegions, listResidents } from '@/services/data'
-import { exportReport, type ReportKind } from '@/services/reports'
+import {
+  buildRegionLine,
+  buildReportPreview,
+  exportReport,
+  formatPeriod,
+  type ReportKind,
+  type ReportPreview,
+} from '@/services/reports'
 import { useAuthStore } from '@/stores/auth'
 import type { FamilyCard, Region, Resident, ResidentMutation } from '@/types/domain'
 
@@ -14,6 +21,9 @@ const mutations = ref<ResidentMutation[]>([])
 const exporting = ref('')
 const selectedRtId = ref('')
 const filterOpen = ref(false)
+const previewOpen = ref(false)
+const previewKind = ref<ReportKind | null>(null)
+const previewData = ref<ReportPreview | null>(null)
 const form = reactive({
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
@@ -57,6 +67,26 @@ const reports: Array<{ kind: ReportKind; title: string; description: string }> =
   },
 ]
 
+const activePreviewReport = computed(() =>
+  reports.find((report) => report.kind === previewKind.value),
+)
+
+const previewContext = computed(() =>
+  `${buildRegionLine(regions.value, auth.profile)} · ${formatPeriod({ month: Number(form.month), year: Number(form.year) })}`,
+)
+
+function getReportOptions(kind: ReportKind) {
+  return {
+    kind,
+    period: { month: Number(form.month), year: Number(form.year) },
+    regions: regions.value,
+    profile: auth.profile,
+    cards: cards.value,
+    residents: residents.value,
+    mutations: mutations.value,
+  }
+}
+
 async function loadData() {
   const rtId = ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? '')
     ? selectedRtId.value || undefined
@@ -97,16 +127,23 @@ function openFilter() {
 async function download(kind: ReportKind) {
   if (!auth.hasPermission('reports.export')) return
   exporting.value = kind
-  await exportReport({
-    kind,
-    period: { month: Number(form.month), year: Number(form.year) },
-    regions: regions.value,
-    profile: auth.profile,
-    cards: cards.value,
-    residents: residents.value,
-    mutations: mutations.value,
-  })
-  exporting.value = ''
+  try {
+    await exportReport(getReportOptions(kind))
+  } finally {
+    exporting.value = ''
+  }
+}
+
+function openPreview(kind: ReportKind) {
+  previewKind.value = kind
+  previewData.value = buildReportPreview(getReportOptions(kind))
+  previewOpen.value = true
+}
+
+function closePreview() {
+  previewOpen.value = false
+  previewKind.value = null
+  previewData.value = null
 }
 
 onMounted(() => {
@@ -127,14 +164,24 @@ onMounted(() => {
         <strong>{{ report.title }}</strong>
         <p class="muted">{{ report.description }}</p>
       </div>
-      <button
-        class="primary-button"
-        type="button"
-        :disabled="exporting === report.kind || !auth.hasPermission('reports.export')"
-        @click="download(report.kind)"
-      >
-        {{ !auth.hasPermission('reports.export') ? 'Tidak diizinkan' : exporting === report.kind ? 'Menyiapkan...' : 'Download XLSX' }}
-      </button>
+      <div class="report-action-buttons">
+        <button
+          class="secondary-button"
+          type="button"
+          :disabled="!auth.hasPermission('reports.view')"
+          @click="openPreview(report.kind)"
+        >
+          Preview
+        </button>
+        <button
+          class="primary-button"
+          type="button"
+          :disabled="exporting === report.kind || !auth.hasPermission('reports.export')"
+          @click="download(report.kind)"
+        >
+          {{ !auth.hasPermission('reports.export') ? 'Tidak diizinkan' : exporting === report.kind ? 'Menyiapkan...' : 'Download XLSX' }}
+        </button>
+      </div>
     </article>
 
     <AppModal :open="filterOpen" title="Filter Laporan" @close="filterOpen = false">
@@ -145,6 +192,56 @@ onMounted(() => {
         <button class="secondary-button" type="button" @click="resetFilter">Reset</button>
         <button class="primary-button" type="submit">Terapkan</button>
       </form>
+    </AppModal>
+
+    <AppModal
+      :open="previewOpen"
+      :title="`Preview ${activePreviewReport?.title ?? 'Laporan'}`"
+      size="large"
+      @close="closePreview"
+    >
+      <div v-if="previewData && previewKind" class="report-preview">
+        <div class="report-preview-header">
+          <div>
+            <strong>{{ activePreviewReport?.title }}</strong>
+            <p class="muted">{{ previewContext }}</p>
+          </div>
+          <span class="badge">{{ previewData.totalRows }} baris</span>
+        </div>
+
+        <div v-if="previewData.rows.length" class="table-wrap report-preview-table">
+          <table>
+            <thead>
+              <tr>
+                <th v-for="column in previewData.columns" :key="column.key">{{ column.label }}</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(row, rowIndex) in previewData.rows.slice(0, 200)" :key="rowIndex">
+                <td v-for="column in previewData.columns" :key="column.key">
+                  {{ row[column.key] ?? '-' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p v-else class="report-preview-empty">Tidak ada data pada periode dan wilayah yang dipilih.</p>
+        <p v-if="previewData.totalRows > 200" class="muted">
+          Preview menampilkan 200 baris pertama. File XLSX mengikuti batas isi template.
+        </p>
+
+        <div class="report-preview-actions">
+          <button class="secondary-button" type="button" @click="closePreview">Tutup</button>
+          <button
+            class="primary-button"
+            type="button"
+            :disabled="exporting === previewKind || !auth.hasPermission('reports.export')"
+            @click="download(previewKind)"
+          >
+            {{ exporting === previewKind ? 'Menyiapkan...' : 'Download XLSX' }}
+          </button>
+        </div>
+      </div>
     </AppModal>
   </section>
 </template>

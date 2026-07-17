@@ -26,6 +26,24 @@ const reportTemplates = {
 
 export type ReportKind = keyof typeof reportTemplates
 
+export type ReportPreviewCell = string | number
+
+export interface ReportPreview {
+  columns: Array<{ key: string; label: string }>
+  rows: Array<Record<string, ReportPreviewCell>>
+  totalRows: number
+}
+
+interface ReportOptions {
+  kind: ReportKind
+  period: ReportPeriod
+  regions: Region[]
+  profile: UserProfile | null
+  cards: FamilyCard[]
+  residents: Resident[]
+  mutations: ResidentMutation[]
+}
+
 export function calculateStats(
   cards: FamilyCard[],
   residents: Resident[],
@@ -67,15 +85,138 @@ export function countMutationsByType(mutations: ResidentMutation[], type: Mutati
   }
 }
 
-export async function exportReport(options: {
-  kind: ReportKind
-  period: ReportPeriod
-  regions: Region[]
-  profile: UserProfile | null
-  cards: FamilyCard[]
-  residents: Resident[]
-  mutations: ResidentMutation[]
-}) {
+function getReportResidents(options: ReportOptions) {
+  if (options.kind === 'bukuIndukTetap') {
+    return options.residents.filter((item) => item.residentStatus === 'tetap')
+  }
+  if (options.kind === 'bukuIndukSementara') {
+    return options.residents.filter((item) => item.residentStatus === 'sementara')
+  }
+  return options.residents
+}
+
+function getReportMutations(options: ReportOptions) {
+  const periodPrefix = `${options.period.year}-${String(options.period.month).padStart(2, '0')}`
+  const mutations = options.mutations.filter((item) => item.mutationDate.startsWith(periodPrefix))
+
+  if (options.kind === 'perubahanTetap') {
+    return mutations.filter((item) => item.residentStatus === 'tetap')
+  }
+  if (options.kind === 'perubahanSementara') {
+    return mutations.filter((item) => item.residentStatus === 'sementara')
+  }
+  return mutations
+}
+
+function formatGender(gender: Resident['gender']) {
+  return gender === 'L' ? 'Laki-laki' : 'Perempuan'
+}
+
+function formatMutationType(type: MutationType) {
+  return ({ lahir: 'Lahir', mati: 'Meninggal', pindah: 'Pindah', datang: 'Datang' })[type]
+}
+
+export function buildReportPreview(options: ReportOptions): ReportPreview {
+  const residents = getReportResidents(options)
+  const mutations = getReportMutations(options)
+
+  if (options.kind === 'lampid') {
+    const rows = (['lahir', 'mati', 'pindah', 'datang'] as MutationType[]).map((type) => {
+      const count = countMutationsByType(mutations, type)
+      return {
+        category: formatMutationType(type),
+        male: count.male,
+        female: count.female,
+        total: count.total,
+      }
+    })
+    return {
+      columns: [
+        { key: 'category', label: 'Keterangan' },
+        { key: 'male', label: 'Laki-laki' },
+        { key: 'female', label: 'Perempuan' },
+        { key: 'total', label: 'Total' },
+      ],
+      rows,
+      totalRows: rows.length,
+    }
+  }
+
+  if (options.kind === 'perkembangan') {
+    const stats = calculateStats([], residents, mutations)
+    const rows = [
+      { description: 'Penduduk tetap', total: stats.permanent },
+      { description: 'Lahir', total: stats.lahir },
+      { description: 'Meninggal', total: stats.mati },
+      { description: 'Pindah', total: stats.pindah },
+      { description: 'Datang', total: stats.datang },
+      {
+        description: 'Jumlah akhir',
+        total: Math.max(0, stats.permanent + stats.lahir + stats.datang - stats.pindah - stats.mati),
+      },
+    ]
+    return {
+      columns: [
+        { key: 'description', label: 'Uraian' },
+        { key: 'total', label: 'Jumlah' },
+      ],
+      rows,
+      totalRows: rows.length,
+    }
+  }
+
+  if (options.kind.includes('bukuInduk')) {
+    const rows = residents.map((resident, index) => ({
+      number: index + 1,
+      kkNumber: resident.kkNumber,
+      nik: resident.nik,
+      fullName: resident.fullName,
+      gender: formatGender(resident.gender),
+      birth: `${resident.birthPlace}, ${resident.birthDate}`,
+      maritalStatus: resident.maritalStatus,
+      relationship: resident.familyRelationship,
+      address: resident.address,
+    }))
+    return {
+      columns: [
+        { key: 'number', label: 'No.' },
+        { key: 'kkNumber', label: 'No. KK' },
+        { key: 'nik', label: 'NIK' },
+        { key: 'fullName', label: 'Nama' },
+        { key: 'gender', label: 'Jenis Kelamin' },
+        { key: 'birth', label: 'Tempat, Tanggal Lahir' },
+        { key: 'maritalStatus', label: 'Status Perkawinan' },
+        { key: 'relationship', label: 'Hubungan Keluarga' },
+        { key: 'address', label: 'Alamat' },
+      ],
+      rows,
+      totalRows: rows.length,
+    }
+  }
+
+  const rows = mutations.map((mutation, index) => ({
+    number: index + 1,
+    residentName: mutation.residentName,
+    gender: formatGender(mutation.gender),
+    mutationType: formatMutationType(mutation.mutationType),
+    mutationDate: mutation.mutationDate,
+    note: mutation.note ?? '-',
+  }))
+  return {
+    columns: [
+      { key: 'number', label: 'No.' },
+      { key: 'residentName', label: 'Nama' },
+      { key: 'gender', label: 'Jenis Kelamin' },
+      { key: 'mutationType', label: 'Jenis Perubahan' },
+      { key: 'mutationDate', label: 'Tanggal' },
+      { key: 'note', label: 'Catatan' },
+    ],
+    rows,
+    totalRows: rows.length,
+  }
+}
+
+export async function exportReport(options: ReportOptions) {
   const workbook = new ExcelJS.Workbook()
   const response = await fetch(reportTemplates[options.kind])
   const template = await response.arrayBuffer()
@@ -88,14 +229,17 @@ export async function exportReport(options: {
   sheet.getCell('A3').value = regionLine
   sheet.getCell('A4').value = `BULAN ${formatPeriod(options.period)}`
 
+  const residents = getReportResidents(options)
+  const mutations = getReportMutations(options)
+
   if (options.kind === 'lampid') {
-    fillLampid(sheet, options.mutations)
+    fillLampid(sheet, mutations)
   } else if (options.kind === 'perkembangan') {
-    fillDevelopment(sheet, options.residents, options.mutations)
+    fillDevelopment(sheet, residents, mutations)
   } else if (options.kind.includes('bukuInduk')) {
-    fillResidentBook(sheet, options.residents)
+    fillResidentBook(sheet, residents)
   } else {
-    fillMutationBook(sheet, options.mutations)
+    fillMutationBook(sheet, mutations)
   }
 
   const buffer = await workbook.xlsx.writeBuffer()
