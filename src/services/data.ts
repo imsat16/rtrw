@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import type { FamilyCard, Region, Resident, ResidentMutation, UserProfile } from '@/types/domain'
+import type { FamilyCard, Region, Resident, ResidentMutation, Role, UserProfile } from '@/types/domain'
 
 type RegionRow = {
   id: string
@@ -15,6 +15,11 @@ type RegionRow = {
   rt_id: string | null
   created_at: string | null
   updated_at: string | null
+}
+
+type RoleRow = {
+  id: string
+  label: string
 }
 
 type ProfileRow = {
@@ -106,6 +111,10 @@ function clean<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== ''))
 }
 
+function mapRole(row: RoleRow): Role {
+  return { id: row.id as UserProfile['role'], label: row.label }
+}
+
 function mapProfile(row: ProfileRow): UserProfile {
   return {
     uid: row.id,
@@ -119,6 +128,21 @@ function mapProfile(row: ProfileRow): UserProfile {
     rwId: row.rw_id ?? undefined,
     rtId: row.rt_id ?? undefined,
   }
+}
+
+function profilePayload(profile: Omit<UserProfile, 'uid'>) {
+  return clean({
+    email: profile.email,
+    display_name: profile.displayName,
+    role: profile.role,
+    province_id: profile.provinceId,
+    city_id: profile.cityId,
+    district_id: profile.districtId,
+    village_id: profile.villageId,
+    rw_id: profile.rwId,
+    rt_id: profile.rtId,
+    updated_at: new Date().toISOString(),
+  })
 }
 
 function mapRegion(row: RegionRow): Region {
@@ -298,6 +322,33 @@ export async function getProfile(userId: string) {
   return mapProfile(data as ProfileRow)
 }
 
+export async function listRoles() {
+  const { data, error } = await supabase.from('roles').select('*').order('id')
+  assertNoError(error)
+  return (data as RoleRow[]).map(mapRole)
+}
+
+export async function listProfiles() {
+  const { data, error } = await supabase.from('profiles').select('*').order('display_name')
+  assertNoError(error)
+  return (data as ProfileRow[]).map(mapProfile)
+}
+
+export async function saveProfile(profile: Omit<UserProfile, 'uid'>, uid: string, isNew: boolean) {
+  const payload = profilePayload(profile)
+  const request = isNew
+    ? supabase.from('profiles').insert({ id: uid, ...payload })
+    : supabase.from('profiles').update(payload).eq('id', uid)
+  const { error } = await request
+  assertNoError(error)
+  return uid
+}
+
+export async function deleteProfile(uid: string) {
+  const { error } = await supabase.from('profiles').delete().eq('id', uid)
+  assertNoError(error)
+}
+
 export async function listRegions() {
   const { data, error } = await supabase.from('regions').select('*').order('type').order('name')
   assertNoError(error)
@@ -321,10 +372,11 @@ export async function deleteRegion(id: string) {
   assertNoError(error)
 }
 
-export async function listFamilyCards(profile: UserProfile | null) {
+export async function listFamilyCards(profile: UserProfile | null, rtId?: string) {
   let request = supabase.from('family_cards').select('*').order('head_name')
   if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
   if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+  if (rtId) request = request.eq('rt_id', rtId)
   const { data, error } = await request
   assertNoError(error)
   return (data as FamilyCardRow[]).map(mapFamilyCard)
@@ -340,10 +392,11 @@ export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) 
   return id || String(data?.id)
 }
 
-export async function listResidents(profile: UserProfile | null) {
+export async function listResidents(profile: UserProfile | null, rtId?: string) {
   let request = supabase.from('residents').select('*').order('full_name')
   if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
   if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+  if (rtId) request = request.eq('rt_id', rtId)
   const { data, error } = await request
   assertNoError(error)
   return (data as ResidentRow[]).map(mapResident)
@@ -359,10 +412,11 @@ export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) 
   return id || String(data?.id)
 }
 
-export async function listMutations(profile: UserProfile | null) {
+export async function listMutations(profile: UserProfile | null, rtId?: string) {
   let request = supabase.from('resident_mutations').select('*').order('mutation_date', { ascending: false })
   if (profile?.role === 'rw' && profile.rwId) request = request.eq('rw_id', profile.rwId)
   if (profile?.role === 'rt' && profile.rtId) request = request.eq('rt_id', profile.rtId)
+  if (rtId) request = request.eq('rt_id', rtId)
   const { data, error } = await request
   assertNoError(error)
   return (data as MutationRow[]).map(mapMutation)

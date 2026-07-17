@@ -17,6 +17,35 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
+create table if not exists public.roles (
+  id text primary key,
+  label text not null
+);
+
+insert into public.roles (id, label) values
+  ('superadmin', 'Superadmin'),
+  ('rw', 'Ketua RW'),
+  ('rt', 'Ketua RT')
+on conflict (id) do update set label = excluded.label;
+
+do $$
+declare
+  con record;
+begin
+  for con in
+    select conname from pg_constraint
+    where conrelid = 'public.profiles'::regclass
+      and contype = 'c'
+      and pg_get_constraintdef(oid) ilike '%role%'
+  loop
+    execute format('alter table public.profiles drop constraint %I', con.conname);
+  end loop;
+end $$;
+
+alter table public.profiles drop constraint if exists profiles_role_fkey;
+alter table public.profiles
+  add constraint profiles_role_fkey foreign key (role) references public.roles(id);
+
 create table if not exists public.regions (
   id uuid primary key default gen_random_uuid(),
   type text not null check (type in ('province', 'city', 'district', 'village', 'rw', 'rt')),
@@ -49,6 +78,13 @@ create table if not exists public.family_cards (
   updated_at timestamptz not null default now()
 );
 
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'family_cards_kk_number_key') then
+    alter table public.family_cards add constraint family_cards_kk_number_key unique (kk_number);
+  end if;
+end $$;
+
 create table if not exists public.residents (
   id uuid primary key default gen_random_uuid(),
   family_card_id uuid not null references public.family_cards(id) on delete cascade,
@@ -79,6 +115,13 @@ create table if not exists public.residents (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'residents_nik_key') then
+    alter table public.residents add constraint residents_nik_key unique (nik);
+  end if;
+end $$;
 
 create table if not exists public.resident_mutations (
   id uuid primary key default gen_random_uuid(),
@@ -139,12 +182,42 @@ as $$
   select rt_id from public.profiles where id = auth.uid()
 $$;
 
+create or replace function app_private.apply_resident_mutation()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if new.resident_id is not null then
+    if new.mutation_type in ('pindah', 'mati') then
+      update public.residents
+      set moved_out_at = new.mutation_date,
+          updated_at = now()
+      where id = new.resident_id;
+    elsif new.mutation_type = 'datang' then
+      update public.residents
+      set moved_out_at = null,
+          updated_at = now()
+      where id = new.resident_id;
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists resident_mutations_apply on public.resident_mutations;
+create trigger resident_mutations_apply
+after insert on public.resident_mutations
+for each row execute function app_private.apply_resident_mutation();
+
 grant usage on schema app_private to authenticated;
 grant execute on function app_private.current_profile_role() to authenticated;
 grant execute on function app_private.current_profile_rw_id() to authenticated;
 grant execute on function app_private.current_profile_rt_id() to authenticated;
 
 grant select, insert, update, delete on public.profiles to authenticated;
+grant select on public.roles to authenticated;
 grant select, insert, update, delete on public.regions to authenticated;
 grant select, insert, update, delete on public.family_cards to authenticated;
 grant select, insert, update, delete on public.residents to authenticated;
@@ -152,6 +225,7 @@ grant select, insert, update, delete on public.resident_mutations to authenticat
 grant select, insert on public.report_exports to authenticated;
 
 alter table public.profiles enable row level security;
+alter table public.roles enable row level security;
 alter table public.regions enable row level security;
 alter table public.family_cards enable row level security;
 alter table public.residents enable row level security;
@@ -168,6 +242,25 @@ create policy "profiles managed by superadmin"
 on public.profiles for all to authenticated
 using (app_private.current_profile_role() = 'superadmin')
 with check (app_private.current_profile_role() = 'superadmin');
+
+drop policy if exists "profiles managed by rw for own rt" on public.profiles;
+create policy "profiles managed by rw for own rt"
+on public.profiles for all to authenticated
+using (
+  app_private.current_profile_role() = 'rw'
+  and role = 'rt'
+  and rw_id = app_private.current_profile_rw_id()
+)
+with check (
+  app_private.current_profile_role() = 'rw'
+  and role = 'rt'
+  and rw_id = app_private.current_profile_rw_id()
+);
+
+drop policy if exists "roles read authenticated" on public.roles;
+create policy "roles read authenticated"
+on public.roles for select to authenticated
+using (true);
 
 drop policy if exists "regions read authenticated" on public.regions;
 create policy "regions read authenticated"
@@ -281,26 +374,103 @@ insert into storage.buckets (id, name, public)
 values ('resident-documents', 'resident-documents', false)
 on conflict (id) do nothing;
 
+-- Documents must be uploaded under the path "{rw_id}/{rt_id}/filename" so
+-- these policies can scope access the same way every other table does.
 drop policy if exists "resident documents authenticated read" on storage.objects;
-create policy "resident documents authenticated read"
-on storage.objects for select to authenticated
-using (bucket_id = 'resident-documents');
-
 drop policy if exists "resident documents authenticated insert" on storage.objects;
-create policy "resident documents authenticated insert"
-on storage.objects for insert to authenticated
-with check (bucket_id = 'resident-documents');
-
 drop policy if exists "resident documents authenticated update" on storage.objects;
-create policy "resident documents authenticated update"
-on storage.objects for update to authenticated
-using (bucket_id = 'resident-documents')
-with check (bucket_id = 'resident-documents');
-
 drop policy if exists "resident documents authenticated delete" on storage.objects;
-create policy "resident documents authenticated delete"
+
+drop policy if exists "resident documents scoped read" on storage.objects;
+create policy "resident documents scoped read"
+on storage.objects for select to authenticated
+using (
+  bucket_id = 'resident-documents'
+  and (
+    app_private.current_profile_role() = 'superadmin'
+    or (
+      app_private.current_profile_role() = 'rw'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+    )
+    or (
+      app_private.current_profile_role() = 'rt'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+      and (storage.foldername(name))[2] = app_private.current_profile_rt_id()::text
+    )
+  )
+);
+
+drop policy if exists "resident documents scoped insert" on storage.objects;
+create policy "resident documents scoped insert"
+on storage.objects for insert to authenticated
+with check (
+  bucket_id = 'resident-documents'
+  and (
+    app_private.current_profile_role() = 'superadmin'
+    or (
+      app_private.current_profile_role() = 'rw'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+    )
+    or (
+      app_private.current_profile_role() = 'rt'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+      and (storage.foldername(name))[2] = app_private.current_profile_rt_id()::text
+    )
+  )
+);
+
+drop policy if exists "resident documents scoped update" on storage.objects;
+create policy "resident documents scoped update"
+on storage.objects for update to authenticated
+using (
+  bucket_id = 'resident-documents'
+  and (
+    app_private.current_profile_role() = 'superadmin'
+    or (
+      app_private.current_profile_role() = 'rw'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+    )
+    or (
+      app_private.current_profile_role() = 'rt'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+      and (storage.foldername(name))[2] = app_private.current_profile_rt_id()::text
+    )
+  )
+)
+with check (
+  bucket_id = 'resident-documents'
+  and (
+    app_private.current_profile_role() = 'superadmin'
+    or (
+      app_private.current_profile_role() = 'rw'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+    )
+    or (
+      app_private.current_profile_role() = 'rt'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+      and (storage.foldername(name))[2] = app_private.current_profile_rt_id()::text
+    )
+  )
+);
+
+drop policy if exists "resident documents scoped delete" on storage.objects;
+create policy "resident documents scoped delete"
 on storage.objects for delete to authenticated
-using (bucket_id = 'resident-documents');
+using (
+  bucket_id = 'resident-documents'
+  and (
+    app_private.current_profile_role() = 'superadmin'
+    or (
+      app_private.current_profile_role() = 'rw'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+    )
+    or (
+      app_private.current_profile_role() = 'rt'
+      and (storage.foldername(name))[1] = app_private.current_profile_rw_id()::text
+      and (storage.foldername(name))[2] = app_private.current_profile_rt_id()::text
+    )
+  )
+);
 
 create index if not exists regions_type_idx on public.regions(type);
 create index if not exists regions_parent_id_idx on public.regions(parent_id);

@@ -33,3 +33,9 @@ export function canManageRegionType(profile: UserProfile | null, type: string): 
   if (profile.role === 'superadmin') return true
   return profile.role === 'rw' && type === 'rt'
 }
+
+export function canManageProfileRole(profile: UserProfile | null, role: string): boolean {
+  if (!profile) return false
+  if (profile.role === 'superadmin') return true
+  return profile.role === 'rw' && role === 'rt'
+}

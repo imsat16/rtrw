@@ -34,6 +34,7 @@ async function handleLogout() {
       <nav class="nav-list">
         <RouterLink to="/">Dashboard</RouterLink>
         <RouterLink v-if="auth.canManageRegions" to="/wilayah">Wilayah</RouterLink>
+        <RouterLink v-if="auth.canManageUsers" to="/pengguna">Manajemen Pengguna</RouterLink>
         <RouterLink to="/kk-warga">KK & Warga</RouterLink>
         <RouterLink to="/export">Export Laporan</RouterLink>
         <RouterLink to="/pengaturan">Pengaturan</RouterLink>

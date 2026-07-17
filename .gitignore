@@ -13,6 +13,7 @@ dist
 dist-ssr
 coverage
 *.local
+.mcp.json
 
 # Editor directories and files
 .vscode/*
