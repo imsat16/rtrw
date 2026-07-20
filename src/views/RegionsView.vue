@@ -68,7 +68,6 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Nama', value: detailTarget.value.name },
   { label: 'Kode', value: detailTarget.value.code },
   { label: 'Induk', value: regionName(detailTarget.value.parentId) },
-  { label: 'UUID', value: detailTarget.value.id },
 ] : [])
 
 async function loadData() {

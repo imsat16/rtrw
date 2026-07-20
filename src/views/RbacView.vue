@@ -40,7 +40,6 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Kode', value: detailTarget.value.code },
   { label: 'Modul', value: detailTarget.value.module },
   { label: 'Deskripsi', value: detailTarget.value.description },
-  { label: 'UUID', value: detailTarget.value.id },
 ] : [])
 
 function roleAllowed(roleId: string, permissionId: string) {

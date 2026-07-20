@@ -121,6 +121,10 @@ function assertNoError(error: unknown) {
   }
 }
 
+function assertSixteenDigits(value: string, label: string) {
+  if (!/^\d{16}$/.test(value)) throw new Error(`${label} harus terdiri dari 16 digit angka.`)
+}
+
 function clean<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== ''))
 }
@@ -629,6 +633,8 @@ export type FamilyHeadInput = {
 }
 
 export async function createFamilyCardWithHead(input: FamilyHeadInput) {
+  assertSixteenDigits(input.kkNumber, 'Nomor KK')
+  assertSixteenDigits(input.headNik, 'NIK kepala keluarga')
   const { data, error } = await supabase.rpc('create_family_card_with_head', {
     p_kk_number: input.kkNumber,
     p_head_nik: input.headNik,
@@ -652,6 +658,7 @@ export async function createFamilyCardWithHead(input: FamilyHeadInput) {
 }
 
 export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) {
+  assertSixteenDigits(card.kkNumber, 'Nomor KK')
   const payload = familyCardPayload(card)
   const request = id
     ? supabase.from('family_cards').update(payload).eq('id', id)
@@ -710,6 +717,8 @@ export async function listResidents(profile: UserProfile | null, rtId?: string, 
 }
 
 export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) {
+  assertSixteenDigits(resident.kkNumber, 'Nomor KK')
+  assertSixteenDigits(resident.nik, 'NIK')
   const payload = residentPayload(resident)
   const request = id
     ? supabase.from('residents').update(payload).eq('id', id)

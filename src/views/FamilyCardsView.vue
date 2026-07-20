@@ -72,7 +72,6 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Alamat', value: detailTarget.value.address },
   { label: 'Jumlah Anggota', value: `${detailTarget.value.memberCount ?? detailMembers.value.length} orang` },
   { label: 'Tanggal Terdaftar', value: detailTarget.value.registeredAt },
-  { label: 'UUID', value: detailTarget.value.id },
 ] : [])
 
 async function openDetail(card: FamilyCard) {
@@ -283,11 +282,11 @@ onMounted(async () => {
     <form class="form-grid modal-form" @submit.prevent="submit">
       <div class="field">
         <label for="kkNumber">Nomor KK</label>
-        <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric" />
+        <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="Nomor KK harus terdiri dari 16 digit angka" />
       </div>
       <div v-if="!editingId" class="field">
         <label for="headNik">NIK kepala keluarga</label>
-        <input id="headNik" v-model="form.headNik" required inputmode="numeric" />
+        <input id="headNik" v-model="form.headNik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
       </div>
       <div class="field">
         <label for="headName">Nama kepala keluarga</label>

@@ -17,8 +17,30 @@ const emit = defineEmits<{
     </label>
     <span>{{ totalItems }} data · Halaman {{ page }} dari {{ totalPages }}</span>
     <div class="table-actions">
-      <button class="secondary-button" type="button" :disabled="page <= 1" @click="emit('update:page', page - 1)">Sebelumnya</button>
-      <button class="secondary-button" type="button" :disabled="page >= totalPages" @click="emit('update:page', page + 1)">Berikutnya</button>
+      <button
+        class="secondary-button pagination-icon-button"
+        type="button"
+        aria-label="Halaman sebelumnya"
+        title="Halaman sebelumnya"
+        :disabled="page <= 1"
+        @click="emit('update:page', page - 1)"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="m15 18-6-6 6-6" />
+        </svg>
+      </button>
+      <button
+        class="secondary-button pagination-icon-button"
+        type="button"
+        aria-label="Halaman berikutnya"
+        title="Halaman berikutnya"
+        :disabled="page >= totalPages"
+        @click="emit('update:page', page + 1)"
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="m9 18 6-6-6-6" />
+        </svg>
+      </button>
     </div>
   </div>
 </template>

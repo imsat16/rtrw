@@ -65,7 +65,6 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Nama Ibu', value: detailTarget.value.motherName },
   { label: 'Status Penduduk', value: detailTarget.value.residentStatus },
   { label: 'Alamat', value: detailTarget.value.address },
-  { label: 'UUID', value: detailTarget.value.id },
 ] : [])
 
 function regionOptionLabel(region: Region) {
@@ -252,7 +251,7 @@ onMounted(async () => {
     <AppModal :open="residentFormOpen" :title="editingResidentId ? 'Edit Warga' : 'Tambah Warga'" size="large" @close="residentFormOpen = false">
     <form class="form-grid compact modal-form" @submit.prevent="submitResident">
       <div class="field"><label for="familyCardId">Kartu keluarga</label><AppAutocomplete input-id="familyCardId" v-model="residentForm.familyCardId" :items="familyCardItems" placeholder="Cari nomor KK, NIK, atau kepala keluarga" empty-text="Kartu keluarga tidak ditemukan" required /></div>
-      <div class="field"><label for="nik">NIK</label><input id="nik" v-model="residentForm.nik" required /></div>
+      <div class="field"><label for="nik">NIK</label><input id="nik" v-model="residentForm.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" /></div>
       <div class="field"><label for="fullName">Nama lengkap</label><input id="fullName" v-model="residentForm.fullName" required /></div>
       <div class="field"><label for="gender">Jenis kelamin</label><select id="gender" v-model="residentForm.gender"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></div>
       <div class="field"><label for="birthPlace">Tempat lahir</label><input id="birthPlace" v-model="residentForm.birthPlace" required /></div>

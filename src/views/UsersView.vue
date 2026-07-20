@@ -68,7 +68,6 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Role', value: roleLabel(detailTarget.value.role) },
   { label: 'RW', value: regionName(detailTarget.value.rwId) },
   { label: 'RT', value: regionName(detailTarget.value.rtId) },
-  { label: 'UUID', value: detailTarget.value.uid },
 ] : [])
 
 async function loadData() {

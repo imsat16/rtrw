@@ -353,6 +353,23 @@ table {
 
 .table-pagination select { width: auto; min-width: 4.5rem; }
 
+.pagination-icon-button {
+  display: inline-grid;
+  width: 40px;
+  padding: 0;
+  place-items: center;
+}
+
+.pagination-icon-button svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .detail-list {
   display: grid;
   grid-template-columns: minmax(9rem, 0.6fr) 1fr;
@@ -420,8 +437,12 @@ table {
 .autocomplete-option small { color: var(--muted); font-weight: 400; }
 .autocomplete-empty { margin: 0; padding: 0.8rem; color: var(--muted); }
 
-.dashboard-toolbar { align-items: flex-start; }
-.dashboard-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.dashboard-page { gap: 12px; }
+.dashboard-toolbar { align-items: flex-start; padding: 12px 14px; }
+.dashboard-toolbar p { margin: 0.25rem 0 0; }
+.dashboard-summary { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; }
+.dashboard-summary .stat-card { padding: 12px 14px; }
+.dashboard-summary .stat-card strong { margin-top: 4px; font-size: 24px; }
 
 .stat-card { position: relative; overflow: hidden; }
 .stat-card::after {
@@ -446,24 +467,24 @@ table {
 .charts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  gap: 12px;
 }
 
 .chart-card {
-  grid-column: span 2;
+  grid-column: span 1;
   min-width: 0;
   border: 1px solid #dbe4ea;
   border-radius: 10px;
-  padding: 1rem;
+  padding: 14px;
   background: #fff;
 }
 
 .chart-card--wide { grid-column: 1 / -1; }
 .chart-card--full { grid-column: 1 / -1; }
-.chart-card header { margin-bottom: 0.75rem; }
+.chart-card header { margin-bottom: 0.5rem; }
 .chart-card header p { margin: 0.25rem 0 0; }
-.chart-canvas { position: relative; height: 300px; min-height: 260px; }
-.chart-card--full .chart-canvas { height: 340px; }
+.chart-canvas { position: relative; height: 220px; min-height: 200px; }
+.chart-card--full .chart-canvas { height: 240px; }
 
 .login-guide-link { color: #0f766e; text-align: center; font-weight: 700; text-decoration: none; }
 .public-panel { padding: 0; background: #f4f7f8; }
@@ -518,9 +539,6 @@ table {
 .guide-warning { display: grid; gap: 0.25rem; margin-top: 1rem; border-radius: 8px; padding: 0.85rem 1rem; }
 .guide-tip { background: #edf8f6; color: #155e57; }
 .guide-warning { background: #fff7e6; color: #92400e; }
-.guide-other-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 2rem; }
-.guide-other-roles > div { border: 1px solid #dbe4ea; border-radius: 12px; padding: 1.25rem; background: #fff; }
-.guide-other-roles p { margin: 0.4rem 0 0; color: #63717d; line-height: 1.55; }
 .guide-footer { border-top: 1px solid #dbe4ea; color: #52616c; }
 .guide-footer a { color: #0f766e; font-weight: 700; text-decoration: none; }
 
@@ -686,6 +704,8 @@ th {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .dashboard-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
   .guide-hero { grid-template-columns: 1fr; gap: 1.5rem; }
   .guide-hero-note { max-width: 360px; }
   .guide-layout { grid-template-columns: 1fr; }
@@ -731,12 +751,14 @@ th {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .charts-grid { grid-template-columns: 1fr; }
   .chart-card,
   .chart-card--wide,
   .chart-card--full { grid-column: 1; }
   .chart-canvas,
-  .chart-card--full .chart-canvas { height: 280px; }
+  .chart-card--full .chart-canvas { height: 240px; }
 
   .report-action {
     display: flex;
@@ -759,8 +781,7 @@ th {
   .guide-app-link { flex: 1; justify-content: center; }
   .guide-content { width: min(100% - 1.5rem, 1180px); padding: 1.5rem 0; }
   .guide-hero { padding: 1.5rem; }
-  .guide-role-picker,
-  .guide-other-roles { grid-template-columns: 1fr; }
+  .guide-role-picker { grid-template-columns: 1fr; }
   .guide-intro-card { align-items: flex-start; flex-direction: column; }
   .guide-scope { max-width: none; }
   .guide-section { grid-template-columns: 1fr; padding: 1.1rem; }

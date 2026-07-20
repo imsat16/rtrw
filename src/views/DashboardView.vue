@@ -210,12 +210,12 @@ onMounted(loadData)
         <BaseChart type="doughnut" :data="statusChart" :options="doughnutOptions" label="Komposisi status penduduk" />
       </article>
 
-      <article class="chart-card chart-card--wide">
+      <article class="chart-card">
         <header><div><strong>Kelompok usia</strong><p class="muted">Sebaran warga berdasarkan kebutuhan layanan usia.</p></div></header>
         <BaseChart type="bar" :data="ageChart" :options="barOptions" label="Sebaran kelompok usia warga" />
       </article>
 
-      <article class="chart-card chart-card--full">
+      <article class="chart-card">
         <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, dan datang sesuai wilayah akun.</p></div></header>
         <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir" />
       </article>

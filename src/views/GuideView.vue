@@ -160,10 +160,6 @@ function printGuide() {
         </div>
       </div>
 
-      <section class="guide-other-roles">
-        <div><strong>Staff RT / Staff RW</strong><p>Mengikuti scope wilayah atasannya. Menu yang tersedia bergantung pada permission yang diberikan.</p></div>
-        <div><strong>Superadmin</strong><p>Dapat mengelola seluruh wilayah, pengguna, role/permission, KK, warga, dan laporan.</p></div>
-      </section>
     </main>
 
     <footer class="guide-footer"><span>Data Warga RT/RW Digital</span><RouterLink :to="appTarget">{{ appTargetLabel }} →</RouterLink></footer>
