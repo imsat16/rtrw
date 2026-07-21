@@ -142,6 +142,31 @@ const scopeChart = computed<ChartData<'bar'>>(() => ({
     },
   ],
 }))
+const scopeSummaryRows = computed(() => groupRegions.value.map((region) => ({
+  label: region.name,
+  residents: residents.value.filter((resident) => groupType.value === 'rw' ? resident.rwId === region.id : resident.rtId === region.id).length,
+  familyCards: cards.value.filter((card) => groupType.value === 'rw' ? card.rwId === region.id : card.rtId === region.id).length,
+})))
+
+function percentage(value: number, total: number) {
+  if (!total) return '0%'
+  return `${((value / total) * 100).toLocaleString('id-ID', { maximumFractionDigits: 1 })}%`
+}
+
+const genderSummaryRows = computed(() => [
+  { label: 'Laki-laki', total: stats.value.male },
+  { label: 'Perempuan', total: stats.value.female },
+])
+const statusSummaryRows = computed(() => [
+  { label: 'Tetap', total: stats.value.permanent },
+  { label: 'Sementara/Musiman', total: stats.value.temporary },
+])
+const ageSummaryRows = computed(() => ageGroups.map((group, index) => ({
+  label: group.label,
+  male: ageGenderCounts.value.male[index] ?? 0,
+  female: ageGenderCounts.value.female[index] ?? 0,
+  total: (ageGenderCounts.value.male[index] ?? 0) + (ageGenderCounts.value.female[index] ?? 0),
+})))
 
 const scopeChartTitle = computed(() => groupType.value === 'rw' ? 'Perbandingan per RW' : 'Perbandingan per RT')
 
@@ -175,6 +200,17 @@ const mutationChart = computed<ChartData<'line'>>(() => ({
     pointRadius: 4,
     pointHoverRadius: 6,
   })),
+}))
+const mutationSummaryRows = computed(() => monthKeys.value.map((month) => {
+  const totals = Object.fromEntries(mutationTypes.map((type) => [
+    type.key,
+    mutations.value.filter((mutation) => mutation.mutationType === type.key && mutation.mutationDate.startsWith(month.key)).length,
+  ])) as Record<(typeof mutationTypes)[number]['key'], number>
+  return {
+    label: month.label,
+    ...totals,
+    total: Object.values(totals).reduce((sum, value) => sum + value, 0),
+  }
 }))
 
 const barOptions: ChartOptions<'bar'> = {
@@ -276,26 +312,61 @@ onMounted(async () => {
       <article v-if="groupType" class="chart-card chart-card--wide">
         <header><div><strong>{{ scopeChartTitle }}</strong><p class="muted">Jumlah warga dan KK berdasarkan wilayah kerja.</p></div></header>
         <BaseChart type="bar" :data="scopeChart" :options="barOptions" :label="scopeChartTitle" />
+        <div class="chart-summary-table">
+          <table>
+            <thead><tr><th>Wilayah</th><th>Warga</th><th>Kartu Keluarga</th></tr></thead>
+            <tbody><tr v-for="row in scopeSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.residents }}</td><td>{{ row.familyCards }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.residents }}</th><th>{{ stats.familyCards }}</th></tr></tfoot>
+          </table>
+        </div>
       </article>
 
       <article class="chart-card">
         <header><div><strong>Komposisi jenis kelamin</strong><p class="muted">Perbandingan warga laki-laki dan perempuan.</p></div></header>
         <BaseChart type="doughnut" :data="genderChart" :options="doughnutOptions" label="Komposisi jenis kelamin warga" />
+        <div class="chart-summary-table">
+          <table>
+            <thead><tr><th>Jenis Kelamin</th><th>Jumlah</th><th>Persentase</th></tr></thead>
+            <tbody><tr v-for="row in genderSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.total }}</td><td>{{ percentage(row.total, stats.residents) }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.residents }}</th><th>100%</th></tr></tfoot>
+          </table>
+        </div>
       </article>
 
       <article class="chart-card">
         <header><div><strong>Status penduduk</strong><p class="muted">Warga tetap dan sementara atau musiman.</p></div></header>
         <BaseChart type="doughnut" :data="statusChart" :options="doughnutOptions" label="Komposisi status penduduk" />
+        <div class="chart-summary-table">
+          <table>
+            <thead><tr><th>Status</th><th>Jumlah</th><th>Persentase</th></tr></thead>
+            <tbody><tr v-for="row in statusSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.total }}</td><td>{{ percentage(row.total, stats.residents) }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.residents }}</th><th>100%</th></tr></tfoot>
+          </table>
+        </div>
       </article>
 
       <article class="chart-card">
         <header><div><strong>Kelompok usia dan jenis kelamin</strong><p class="muted">Total laki-laki dan perempuan pada setiap rentang usia.</p></div></header>
         <BaseChart type="bar" :data="ageChart" :options="stackedBarOptions" label="Sebaran laki-laki dan perempuan berdasarkan kelompok usia" />
+        <div class="chart-summary-table">
+          <table>
+            <thead><tr><th>Kelompok Usia</th><th>Laki-laki</th><th>Perempuan</th><th>Total</th></tr></thead>
+            <tbody><tr v-for="row in ageSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.male }}</td><td>{{ row.female }}</td><td>{{ row.total }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.male }}</th><th>{{ stats.female }}</th><th>{{ stats.residents }}</th></tr></tfoot>
+          </table>
+        </div>
       </article>
 
       <article class="chart-card">
         <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, dan datang sesuai wilayah akun.</p></div></header>
         <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir" />
+        <div class="chart-summary-table">
+          <table>
+            <thead><tr><th>Bulan</th><th>Lahir</th><th>Datang</th><th>Pindah</th><th>Meninggal</th><th>Total</th></tr></thead>
+            <tbody><tr v-for="row in mutationSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.lahir }}</td><td>{{ row.datang }}</td><td>{{ row.pindah }}</td><td>{{ row.mati }}</td><td>{{ row.total }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.lahir }}</th><th>{{ stats.datang }}</th><th>{{ stats.pindah }}</th><th>{{ stats.mati }}</th><th>{{ stats.lahir + stats.datang + stats.pindah + stats.mati }}</th></tr></tfoot>
+          </table>
+        </div>
       </article>
     </div>
   </section>

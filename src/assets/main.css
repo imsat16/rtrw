@@ -492,6 +492,20 @@ table {
 .chart-card header p { margin: 0.25rem 0 0; }
 .chart-canvas { position: relative; height: 220px; min-height: 200px; }
 .chart-card--full .chart-canvas { height: 240px; }
+.chart-summary-table {
+  overflow-x: auto;
+  margin-top: 12px;
+  border: 1px solid #e2e8ee;
+  border-radius: 8px;
+}
+.chart-summary-table table { width: 100%; min-width: 360px; font-size: 12px; }
+.chart-summary-table th,
+.chart-summary-table td { padding: 7px 9px; }
+.chart-summary-table thead { background: #f7fafc; }
+.chart-summary-table th:not(:first-child),
+.chart-summary-table td:not(:first-child) { text-align: right; }
+.chart-summary-table tfoot { background: #edf8f6; }
+.chart-summary-table tfoot th { border-bottom: 0; color: #0f766e; }
 
 .login-guide-link { color: #0f766e; text-align: center; font-weight: 700; text-decoration: none; }
 .public-panel { padding: 0; background: #f4f7f8; }
