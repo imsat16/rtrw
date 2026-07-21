@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import type { ChartData, ChartOptions } from 'chart.js'
 import BaseChart from '@/components/BaseChart.vue'
 import { listFamilyCards, listMutations, listRegions, listResidents } from '@/services/data'
@@ -14,6 +14,8 @@ const mutations = ref<ResidentMutation[]>([])
 const regions = ref<Region[]>([])
 const loading = ref(false)
 const errorMessage = ref('')
+const filters = reactive({ rwId: '', rtId: '' })
+const filterDraft = reactive({ rwId: '', rtId: '' })
 
 const colors = {
   teal: '#13877d',
@@ -29,19 +31,35 @@ const colors = {
 const stats = computed(() => calculateStats(cards.value, residents.value, mutations.value))
 const isRtScope = computed(() => ['ketua_rt', 'staff_rt'].includes(auth.profile?.role ?? ''))
 const isRwScope = computed(() => ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? ''))
-const groupType = computed<'rw' | 'rt' | null>(() => auth.profile?.role === 'superadmin' ? 'rw' : isRwScope.value ? 'rt' : null)
+const rwOptions = computed(() => {
+  const options = regions.value.filter((region) => region.type === 'rw')
+  if (auth.profile?.role === 'superadmin') return options
+  return options.filter((region) => region.id === auth.profile?.rwId)
+})
+const rtOptions = computed(() => regions.value.filter(
+  (region) => region.type === 'rt' && (!filterDraft.rwId || region.rwId === filterDraft.rwId),
+))
+const groupType = computed<'rw' | 'rt' | null>(() => {
+  if (filters.rtId) return null
+  if (filters.rwId || isRwScope.value) return 'rt'
+  return auth.profile?.role === 'superadmin' ? 'rw' : null
+})
 
 function regionName(id?: string) {
   return regions.value.find((region) => region.id === id)?.name ?? '-'
 }
 
 const dashboardTitle = computed(() => {
+  if (filters.rtId) return `Ringkasan RT ${regionName(filters.rtId)}`
+  if (filters.rwId) return `Ringkasan RW ${regionName(filters.rwId)}`
   if (auth.profile?.role === 'superadmin') return 'Ringkasan seluruh wilayah'
   if (isRwScope.value) return `Ringkasan RW ${regionName(auth.profile?.rwId)}`
   return `Ringkasan RT ${regionName(auth.profile?.rtId)}`
 })
 
 const dashboardDescription = computed(() => {
+  if (filters.rtId) return 'Komposisi warga, kelompok usia, dan aktivitas LAMPID untuk RT terpilih.'
+  if (filters.rwId) return 'Perbandingan setiap RT serta kondisi kependudukan dalam RW terpilih.'
   if (auth.profile?.role === 'superadmin') return 'Perbandingan kependudukan setiap RW dan kondisi warga secara keseluruhan.'
   if (isRwScope.value) return 'Perbandingan setiap RT serta kondisi kependudukan dalam RW Anda.'
   return 'Komposisi warga, kelompok usia, dan aktivitas LAMPID khusus RT Anda.'
@@ -74,27 +92,39 @@ function ageAt(date: string) {
   return Math.max(age, 0)
 }
 
-const ageCounts = computed<[number, number, number, number]>(() => {
-  let toddlers = 0
-  let children = 0
-  let adults = 0
-  let seniors = 0
+const ageGroups = [
+  { label: '0–5 tahun', min: 0, max: 5 },
+  { label: '6–17 tahun', min: 6, max: 17 },
+  { label: '18–59 tahun', min: 18, max: 59 },
+  { label: '60+ tahun', min: 60, max: Number.POSITIVE_INFINITY },
+] as const
+
+const ageGenderCounts = computed(() => {
+  const male = ageGroups.map(() => 0)
+  const female = ageGroups.map(() => 0)
   residents.value.forEach((resident) => {
     const age = ageAt(resident.birthDate)
-    if (age <= 5) toddlers++
-    else if (age <= 17) children++
-    else if (age <= 59) adults++
-    else seniors++
+    const groupIndex = ageGroups.findIndex((group) => age >= group.min && age <= group.max)
+    if (groupIndex < 0) return
+    if (resident.gender === 'L') male[groupIndex] = (male[groupIndex] ?? 0) + 1
+    else female[groupIndex] = (female[groupIndex] ?? 0) + 1
   })
-  return [toddlers, children, adults, seniors]
+  return { male, female }
 })
 
 const ageChart = computed<ChartData<'bar'>>(() => ({
-  labels: ['0–5 tahun', '6–17 tahun', '18–59 tahun', '60+ tahun'],
-  datasets: [{ label: 'Warga', data: ageCounts.value, backgroundColor: [colors.tealSoft, colors.blueSoft, colors.teal, colors.amber], borderRadius: 7 }],
+  labels: ageGroups.map((group) => group.label),
+  datasets: [
+    { label: 'Laki-laki', data: ageGenderCounts.value.male, backgroundColor: colors.blue, borderRadius: 5 },
+    { label: 'Perempuan', data: ageGenderCounts.value.female, backgroundColor: colors.purple, borderRadius: 5 },
+  ],
 }))
 
-const groupRegions = computed(() => regions.value.filter((region) => region.type === groupType.value))
+const groupRegions = computed(() => regions.value.filter((region) => {
+  if (region.type !== groupType.value) return false
+  if (groupType.value === 'rt' && filters.rwId) return region.rwId === filters.rwId
+  return true
+}))
 const scopeChart = computed<ChartData<'bar'>>(() => ({
   labels: groupRegions.value.map((region) => region.name),
   datasets: [
@@ -151,6 +181,13 @@ const barOptions: ChartOptions<'bar'> = {
   scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } },
   plugins: { legend: { position: 'bottom' } },
 }
+const stackedBarOptions: ChartOptions<'bar'> = {
+  scales: {
+    y: { beginAtZero: true, stacked: true, ticks: { precision: 0 } },
+    x: { stacked: true, grid: { display: false } },
+  },
+  plugins: { legend: { position: 'bottom' } },
+}
 const lineOptions: ChartOptions<'line'> = {
   scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } },
 }
@@ -161,10 +198,10 @@ async function loadData() {
   errorMessage.value = ''
   try {
     const [cardData, residentData, mutationData, regionData] = await Promise.all([
-      listFamilyCards(auth.profile),
-      listResidents(auth.profile),
-      listMutations(auth.profile),
-      listRegions(auth.profile),
+      listFamilyCards(auth.profile, filters.rtId || undefined, filters.rwId || undefined),
+      listResidents(auth.profile, filters.rtId || undefined, filters.rwId || undefined),
+      listMutations(auth.profile, filters.rtId || undefined, filters.rwId || undefined),
+      regions.value.length ? Promise.resolve(regions.value) : listRegions(auth.profile),
     ])
     cards.value = cardData
     residents.value = residentData
@@ -177,7 +214,31 @@ async function loadData() {
   }
 }
 
-onMounted(loadData)
+function initializeFilters() {
+  filters.rwId = auth.profile?.rwId ?? ''
+  filters.rtId = auth.profile?.rtId ?? ''
+  Object.assign(filterDraft, filters)
+}
+
+async function applyFilters() {
+  Object.assign(filters, filterDraft)
+  await loadData()
+}
+
+async function resetFilters() {
+  initializeFilters()
+  await loadData()
+}
+
+watch(() => filterDraft.rwId, () => {
+  if (!rtOptions.value.some((region) => region.id === filterDraft.rtId)) filterDraft.rtId = ''
+})
+
+onMounted(async () => {
+  regions.value = await listRegions(auth.profile)
+  initializeFilters()
+  await loadData()
+})
 </script>
 
 <template>
@@ -185,7 +246,24 @@ onMounted(loadData)
     <p v-if="errorMessage" class="alert">{{ errorMessage }}</p>
     <div class="toolbar dashboard-toolbar">
       <div><strong>{{ dashboardTitle }}</strong><p class="muted">{{ dashboardDescription }}</p></div>
-      <button class="secondary-button" type="button" :disabled="loading" @click="loadData">{{ loading ? 'Memuat...' : 'Refresh' }}</button>
+      <form class="dashboard-filters" @submit.prevent="applyFilters">
+        <div class="field">
+          <label for="dashboardRw">RW</label>
+          <select id="dashboardRw" v-model="filterDraft.rwId" :disabled="auth.profile?.role !== 'superadmin'">
+            <option value="">Semua RW</option>
+            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ rw.name }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="dashboardRt">RT</label>
+          <select id="dashboardRt" v-model="filterDraft.rtId" :disabled="Boolean(auth.profile?.rtId)">
+            <option value="">Semua RT</option>
+            <option v-for="rt in rtOptions" :key="rt.id" :value="rt.id">{{ rt.name }}</option>
+          </select>
+        </div>
+        <button class="primary-button" type="submit" :disabled="loading">{{ loading ? 'Memuat...' : 'Terapkan' }}</button>
+        <button class="secondary-button" type="button" :disabled="loading" @click="resetFilters">Reset</button>
+      </form>
     </div>
 
     <div class="dashboard-grid dashboard-summary">
@@ -195,7 +273,7 @@ onMounted(loadData)
     </div>
 
     <div v-if="!loading" class="charts-grid">
-      <article v-if="!isRtScope" class="chart-card chart-card--wide">
+      <article v-if="groupType" class="chart-card chart-card--wide">
         <header><div><strong>{{ scopeChartTitle }}</strong><p class="muted">Jumlah warga dan KK berdasarkan wilayah kerja.</p></div></header>
         <BaseChart type="bar" :data="scopeChart" :options="barOptions" :label="scopeChartTitle" />
       </article>
@@ -211,8 +289,8 @@ onMounted(loadData)
       </article>
 
       <article class="chart-card">
-        <header><div><strong>Kelompok usia</strong><p class="muted">Sebaran warga berdasarkan kebutuhan layanan usia.</p></div></header>
-        <BaseChart type="bar" :data="ageChart" :options="barOptions" label="Sebaran kelompok usia warga" />
+        <header><div><strong>Kelompok usia dan jenis kelamin</strong><p class="muted">Total laki-laki dan perempuan pada setiap rentang usia.</p></div></header>
+        <BaseChart type="bar" :data="ageChart" :options="stackedBarOptions" label="Sebaran laki-laki dan perempuan berdasarkan kelompok usia" />
       </article>
 
       <article class="chart-card">

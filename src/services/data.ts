@@ -733,7 +733,7 @@ export async function deleteResident(id: string) {
   assertNoError(error)
 }
 
-export async function listMutations(profile: UserProfile | null, rtId?: string) {
+export async function listMutations(profile: UserProfile | null, rtId?: string, rwId?: string) {
   let request = supabase.from('resident_mutations').select('*').order('mutation_date', { ascending: false })
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
@@ -742,6 +742,7 @@ export async function listMutations(profile: UserProfile | null, rtId?: string) 
     request = request.eq('rt_id', profile.rtId)
   }
   if (rtId) request = request.eq('rt_id', rtId)
+  if (rwId) request = request.eq('rw_id', rwId)
   const { data, error } = await request
   assertNoError(error)
   return (data as MutationRow[]).map(mapMutation)
