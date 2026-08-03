@@ -642,9 +642,9 @@ onMounted(async () => {
           </div>
         </template>
 
-        <button class="primary-button" type="submit" :disabled="saving">{{ saving ? 'Menyimpan...' : (editingId ?
-          'Simpan
-          Perubahan' : 'Tambah KK') }}</button>
+        <button class="primary-button" type="submit" :disabled="saving">
+          {{ saving ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Tambah KK') }}
+        </button>
         <button class="secondary-button" type="button" @click="formOpen = false">Batal</button>
       </form>
     </AppModal>
