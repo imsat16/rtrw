@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import ItemDetailModal from '@/components/ItemDetailModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
@@ -148,8 +149,7 @@ onMounted(async () => {
     <div class="section-panel">
       <div class="section-header">
         <div><strong>Daftar wilayah</strong><span class="badge">{{ regions.length }} data</span></div>
-        <button v-if="auth.canManageRegions" class="primary-button" type="button" @click="openCreate">Tambah
-          Wilayah</button>
+        <button v-if="auth.canManageRegions" class="primary-button action-button icon-compact-mobile" type="button" aria-label="Tambah Wilayah" title="Tambah Wilayah" @click="openCreate"><AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah Wilayah</span></button>
       </div>
       <div class="table-wrap">
         <table>
@@ -169,10 +169,10 @@ onMounted(async () => {
               <td>{{ region.code || '-' }}</td>
               <td>{{ regionName(region.parentId) }}</td>
               <td class="table-actions">
-                <button class="secondary-button" type="button" @click="detailTarget = region">Lihat</button>
+                <button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail" title="Lihat detail" @click="detailTarget = region"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button>
                 <template v-if="canManageRegionType(auth.profile, region.type)">
-                  <button class="secondary-button" type="button" @click="editRegion(region)">Edit</button>
-                  <button class="danger-button" type="button" @click="deleteTarget = region">Hapus</button>
+                  <button class="secondary-button action-button icon-only-button" type="button" aria-label="Edit wilayah" title="Edit wilayah" @click="editRegion(region)"><AppIcon class="action-icon" icon="mdi:pencil-outline" /><span class="action-label">Edit</span></button>
+                  <button class="danger-button action-button icon-only-button" type="button" aria-label="Hapus wilayah" title="Hapus wilayah" @click="deleteTarget = region"><AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span></button>
                 </template>
               </td>
             </tr>

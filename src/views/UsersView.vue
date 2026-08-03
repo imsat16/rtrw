@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import ItemDetailModal from '@/components/ItemDetailModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
@@ -196,8 +197,9 @@ onMounted(async () => {
     <div class="section-panel">
       <div class="section-header">
         <div><strong>Daftar pengguna</strong><span class="badge">{{ profiles.length }} akun</span></div>
-        <button v-if="auth.canManageUsers && auth.profile?.role === 'superadmin'" class="primary-button" type="button" @click="openCreate">
-          Tambah Pengguna
+        <button v-if="auth.canManageUsers && auth.profile?.role === 'superadmin'" class="primary-button action-button icon-compact-mobile" type="button" aria-label="Tambah Pengguna" title="Tambah Pengguna" @click="openCreate">
+          <AppIcon class="action-icon" icon="mdi:plus" />
+          <span class="action-label">Tambah Pengguna</span>
         </button>
       </div>
       <div class="table-wrap">
@@ -208,10 +210,10 @@ onMounted(async () => {
               <td>{{ item.displayName }}</td><td>{{ item.email }}</td><td>{{ roleLabel(item.role) }}</td>
               <td>{{ ['ketua_rt', 'staff_rt'].includes(item.role) ? regionName(item.rtId) : regionName(item.rwId) }}</td>
               <td class="table-actions">
-                <button class="secondary-button" type="button" @click="detailTarget = item">Lihat</button>
+                <button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail" title="Lihat detail" @click="detailTarget = item"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button>
                 <template v-if="canManageProfileRole(auth.profile, item.role)">
-                  <button class="secondary-button" type="button" @click="editProfile(item)">Edit</button>
-                  <button v-if="item.uid !== auth.currentUser?.id && item.role !== 'superadmin'" class="danger-button" type="button" @click="deleteTarget = item">Hapus</button>
+                  <button class="secondary-button action-button icon-only-button" type="button" aria-label="Edit pengguna" title="Edit pengguna" @click="editProfile(item)"><AppIcon class="action-icon" icon="mdi:pencil-outline" /><span class="action-label">Edit</span></button>
+                  <button v-if="item.uid !== auth.currentUser?.id && item.role !== 'superadmin'" class="danger-button action-button icon-only-button" type="button" aria-label="Hapus pengguna" title="Hapus pengguna" @click="deleteTarget = item"><AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span></button>
                 </template>
               </td>
             </tr>

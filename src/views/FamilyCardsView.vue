@@ -1,11 +1,30 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
-import { createFamilyCardWithHead, deleteFamilyCard, listFamilyCards, listRegions, listResidentsByFamilyCard, updateFamilyCard } from '@/services/data'
+import { deleteFamilyCard, listFamilyCards, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
-import type { FamilyCard, Gender, Region, Resident } from '@/types/domain'
+import type { FamilyCard, Gender, Region, Resident, ResidentStatus } from '@/types/domain'
+
+type ResidentDraft = {
+  nik: string
+  fullName: string
+  gender: Gender
+  birthPlace: string
+  birthDate: string
+  religion: string
+  education: string
+  occupation: string
+  maritalStatus: string
+  familyRelationship: string
+  citizenship: string
+  fatherName: string
+  motherName: string
+  staySince: string
+  residentStatus: ResidentStatus
+}
 
 const auth = useAuthStore()
 const cards = ref<FamilyCard[]>([])
@@ -25,18 +44,38 @@ const filters = reactive({ rwId: '', rtId: '', search: '' })
 const filterDraft = reactive({ rwId: '', rtId: '', search: '' })
 const form = reactive({
   kkNumber: '',
-  headNik: '',
-  headName: '',
   address: '',
-  gender: 'L' as Gender,
-  birthPlace: '',
-  birthDate: '',
-  religion: 'Islam',
-  maritalStatus: 'Kawin',
+  headName: '',
   registeredAt: '',
   rwId: '',
   rtId: '',
 })
+const headForm = reactive(createResidentDraft({
+  maritalStatus: 'Kawin',
+  familyRelationship: 'Kepala Keluarga',
+}))
+const memberForms = ref<ResidentDraft[]>([])
+
+function createResidentDraft(overrides: Partial<ResidentDraft> = {}): ResidentDraft {
+  return {
+    nik: '',
+    fullName: '',
+    gender: 'L',
+    birthPlace: '',
+    birthDate: '',
+    religion: 'Islam',
+    education: '',
+    occupation: '',
+    maritalStatus: 'Belum Kawin',
+    familyRelationship: 'Anak',
+    citizenship: 'WNI',
+    fatherName: '',
+    motherName: '',
+    staySince: '',
+    residentStatus: 'tetap',
+    ...overrides,
+  }
+}
 
 const rwOptions = computed(() => {
   const options = regions.value.filter((item) => item.type === 'rw')
@@ -96,10 +135,11 @@ function closeDetail() {
 function resetForm() {
   editingId.value = ''
   Object.assign(form, {
-    kkNumber: '', headNik: '', headName: '', address: '', gender: 'L' as Gender,
-    birthPlace: '', birthDate: '', religion: 'Islam', maritalStatus: 'Kawin', registeredAt: '',
+    kkNumber: '', headName: '', address: '', registeredAt: '',
     rwId: auth.profile?.rwId ?? '', rtId: auth.profile?.rtId ?? '',
   })
+  Object.assign(headForm, createResidentDraft({ maritalStatus: 'Kawin', familyRelationship: 'Kepala Keluarga' }))
+  memberForms.value = []
 }
 
 function openCreate() {
@@ -117,7 +157,25 @@ function editCard(card: FamilyCard) {
     rwId: card.rwId ?? '',
     rtId: card.rtId ?? '',
   })
+  memberForms.value = []
   formOpen.value = true
+}
+
+function addMemberForm() {
+  memberForms.value.push(createResidentDraft())
+}
+
+function removeMemberForm(index: number) {
+  memberForms.value.splice(index, 1)
+}
+
+function validateUniqueNiks() {
+  const nikList = [headForm.nik, ...memberForms.value.map((item) => item.nik)]
+    .map((nik) => nik.trim())
+    .filter(Boolean)
+  if (nikList.length !== new Set(nikList).size) {
+    throw new Error('NIK kepala keluarga dan anggota harus unik.')
+  }
 }
 
 function initializeScope() {
@@ -162,10 +220,11 @@ async function submit() {
   if (!rt) return
   saving.value = true
   message.value = ''
+  let createdCardId = ''
   try {
     const payload = {
       kkNumber: form.kkNumber,
-      headName: form.headName,
+      headName: editingId.value ? form.headName : headForm.fullName,
       address: form.address,
       registeredAt: form.registeredAt,
       provinceId: rt.provinceId,
@@ -176,21 +235,78 @@ async function submit() {
       rtId: rt.id,
     }
     if (editingId.value) await updateFamilyCard(payload, editingId.value)
-    else await createFamilyCardWithHead({
-      ...payload,
-      headNik: form.headNik,
-      gender: form.gender,
-      birthPlace: form.birthPlace,
-      birthDate: form.birthDate,
-      religion: form.religion,
-      maritalStatus: form.maritalStatus,
-    })
+    else {
+      validateUniqueNiks()
+      createdCardId = await saveFamilyCard(payload)
+      await saveResident({
+        familyCardId: createdCardId,
+        kkNumber: payload.kkNumber,
+        nik: headForm.nik,
+        fullName: headForm.fullName,
+        gender: headForm.gender,
+        birthPlace: headForm.birthPlace,
+        birthDate: headForm.birthDate,
+        religion: headForm.religion,
+        education: headForm.education,
+        occupation: headForm.occupation,
+        maritalStatus: headForm.maritalStatus,
+        familyRelationship: 'Kepala Keluarga',
+        citizenship: headForm.citizenship,
+        fatherName: headForm.fatherName,
+        motherName: headForm.motherName,
+        address: payload.address,
+        staySince: headForm.staySince,
+        residentStatus: headForm.residentStatus,
+        provinceId: payload.provinceId,
+        cityId: payload.cityId,
+        districtId: payload.districtId,
+        villageId: payload.villageId,
+        rwId: payload.rwId,
+        rtId: payload.rtId,
+      })
+
+      for (const member of memberForms.value) {
+        await saveResident({
+          familyCardId: createdCardId,
+          kkNumber: payload.kkNumber,
+          nik: member.nik,
+          fullName: member.fullName,
+          gender: member.gender,
+          birthPlace: member.birthPlace,
+          birthDate: member.birthDate,
+          religion: member.religion,
+          education: member.education,
+          occupation: member.occupation,
+          maritalStatus: member.maritalStatus,
+          familyRelationship: member.familyRelationship,
+          citizenship: member.citizenship,
+          fatherName: member.fatherName,
+          motherName: member.motherName,
+          address: payload.address,
+          staySince: member.staySince,
+          residentStatus: member.residentStatus,
+          provinceId: payload.provinceId,
+          cityId: payload.cityId,
+          districtId: payload.districtId,
+          villageId: payload.villageId,
+          rwId: payload.rwId,
+          rtId: payload.rtId,
+        })
+      }
+    }
     message.value = editingId.value ? 'Kartu Keluarga berhasil diperbarui.' : 'KK dan data kepala keluarga berhasil disimpan.'
     messageError.value = false
     formOpen.value = false
     resetForm()
     await loadCards()
   } catch (error) {
+    if (!editingId.value && createdCardId) {
+      try {
+        await deleteFamilyCard(createdCardId)
+      } catch {
+        // Best effort rollback jika salah satu data warga gagal disimpan.
+      }
+    }
     message.value = error instanceof Error ? error.message : 'Gagal menyimpan Kartu Keluarga.'
     messageError.value = true
   } finally {
@@ -237,15 +353,15 @@ onMounted(async () => {
       <div class="section-header">
         <div><strong>Daftar Kartu Keluarga</strong><span class="badge">{{ cards.length }} KK</span></div>
         <div class="table-actions">
-          <button class="secondary-button" type="button" @click="openFilters">Filter</button>
-          <button v-if="auth.hasPermission('families.manage')" class="primary-button" type="button" @click="openCreate">Tambah KK</button>
+          <button class="secondary-button action-button icon-compact-mobile" type="button" aria-label="Filter" title="Filter" @click="openFilters"><AppIcon class="action-icon" icon="mdi:filter-variant" /><span class="action-label">Filter</span></button>
+          <button v-if="auth.hasPermission('families.manage')" class="primary-button action-button icon-compact-mobile" type="button" aria-label="Tambah KK" title="Tambah KK" @click="openCreate"><AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah KK</span></button>
         </div>
       </div>
       <div class="table-wrap">
         <table>
           <thead><tr><th><button class="sort-button" type="button" @click="toggleSort('kkNumber')">No. KK {{ sortIndicator('kkNumber') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('headName')">Kepala Keluarga {{ sortIndicator('headName') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{ sortIndicator('memberCount') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{ sortIndicator('address') }}</button></th><th>Aksi</th></tr></thead>
           <tbody>
-            <tr v-for="card in paginatedItems" :key="card.id"><td>{{ card.kkNumber }}</td><td>{{ card.headName }}</td><td>{{ card.memberCount ?? 0 }} orang</td><td>{{ regionName(card.rwId) }}</td><td>{{ regionName(card.rtId) }}</td><td>{{ card.address }}</td><td class="table-actions"><button class="secondary-button" type="button" @click="openDetail(card)">Lihat</button><template v-if="auth.hasPermission('families.manage')"><button class="secondary-button" type="button" @click="editCard(card)">Edit</button><button class="danger-button" type="button" @click="deleteTarget = card">Hapus</button></template></td></tr>
+            <tr v-for="card in paginatedItems" :key="card.id"><td>{{ card.kkNumber }}</td><td>{{ card.headName }}</td><td>{{ card.memberCount ?? 0 }} orang</td><td>{{ regionName(card.rwId) }}</td><td>{{ regionName(card.rtId) }}</td><td>{{ card.address }}</td><td class="table-actions"><button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail" title="Lihat detail" @click="openDetail(card)"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button><template v-if="auth.hasPermission('families.manage')"><button class="secondary-button action-button icon-only-button" type="button" aria-label="Edit KK" title="Edit KK" @click="editCard(card)"><AppIcon class="action-icon" icon="mdi:pencil-outline" /><span class="action-label">Edit</span></button><button class="danger-button action-button icon-only-button" type="button" aria-label="Hapus KK" title="Hapus KK" @click="deleteTarget = card"><AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span></button></template></td></tr>
             <tr v-if="!loading && cards.length === 0"><td colspan="7" class="muted">Data KK tidak ditemukan.</td></tr>
           </tbody>
         </table>
@@ -280,42 +396,16 @@ onMounted(async () => {
 
     <AppModal :open="formOpen" :title="editingId ? 'Edit Kartu Keluarga' : 'Tambah Kartu Keluarga'" size="large" @close="formOpen = false">
     <form class="form-grid modal-form" @submit.prevent="submit">
+      <div class="family-form-section">
+        <h3>Data Kartu Keluarga</h3>
+      </div>
       <div class="field">
         <label for="kkNumber">Nomor KK</label>
         <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="Nomor KK harus terdiri dari 16 digit angka" />
       </div>
-      <div v-if="!editingId" class="field">
-        <label for="headNik">NIK kepala keluarga</label>
-        <input id="headNik" v-model="form.headNik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
-      </div>
-      <div class="field">
+      <div v-if="editingId" class="field">
         <label for="headName">Nama kepala keluarga</label>
         <input id="headName" v-model="form.headName" required />
-      </div>
-      <div v-if="!editingId" class="field">
-        <label for="gender">Jenis kelamin</label>
-        <select id="gender" v-model="form.gender">
-          <option value="L">Laki-laki</option>
-          <option value="P">Perempuan</option>
-        </select>
-      </div>
-      <div v-if="!editingId" class="field">
-        <label for="birthPlace">Tempat lahir</label>
-        <input id="birthPlace" v-model="form.birthPlace" required />
-      </div>
-      <div v-if="!editingId" class="field">
-        <label for="birthDate">Tanggal lahir</label>
-        <input id="birthDate" v-model="form.birthDate" required type="date" />
-      </div>
-      <div v-if="!editingId" class="field">
-        <label for="religion">Agama</label>
-        <input id="religion" v-model="form.religion" required />
-      </div>
-      <div v-if="!editingId" class="field">
-        <label for="maritalStatus">Status perkawinan</label>
-        <select id="maritalStatus" v-model="form.maritalStatus">
-          <option>Belum Kawin</option><option>Kawin</option><option>Cerai Hidup</option><option>Cerai Mati</option>
-        </select>
       </div>
       <div class="field">
         <label for="registeredAt">Tanggal terdaftar</label>
@@ -339,6 +429,160 @@ onMounted(async () => {
         <label for="address">Alamat lengkap</label>
         <textarea id="address" v-model="form.address" required />
       </div>
+
+      <template v-if="!editingId">
+        <div class="family-form-section">
+          <h3>Data Kepala Keluarga</h3>
+          <p class="muted">Isi data kepala keluarga dengan format yang sama seperti data warga.</p>
+        </div>
+        <div class="field">
+          <label for="headNik">NIK kepala keluarga</label>
+          <input id="headNik" v-model="headForm.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
+        </div>
+        <div class="field">
+          <label for="headFullName">Nama lengkap</label>
+          <input id="headFullName" v-model="headForm.fullName" required />
+        </div>
+        <div class="field">
+          <label for="headGender">Jenis kelamin</label>
+          <select id="headGender" v-model="headForm.gender">
+            <option value="L">Laki-laki</option>
+            <option value="P">Perempuan</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="headBirthPlace">Tempat lahir</label>
+          <input id="headBirthPlace" v-model="headForm.birthPlace" required />
+        </div>
+        <div class="field">
+          <label for="headBirthDate">Tanggal lahir</label>
+          <input id="headBirthDate" v-model="headForm.birthDate" required type="date" />
+        </div>
+        <div class="field">
+          <label for="headReligion">Agama</label>
+          <input id="headReligion" v-model="headForm.religion" required />
+        </div>
+        <div class="field">
+          <label for="headEducation">Pendidikan</label>
+          <input id="headEducation" v-model="headForm.education" />
+        </div>
+        <div class="field">
+          <label for="headOccupation">Pekerjaan</label>
+          <input id="headOccupation" v-model="headForm.occupation" />
+        </div>
+        <div class="field">
+          <label for="headMaritalStatus">Status perkawinan</label>
+          <select id="headMaritalStatus" v-model="headForm.maritalStatus">
+            <option>Belum Kawin</option><option>Kawin</option><option>Cerai Hidup</option><option>Cerai Mati</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="headCitizenship">Kewarganegaraan</label>
+          <input id="headCitizenship" v-model="headForm.citizenship" />
+        </div>
+        <div class="field">
+          <label for="headFatherName">Nama ayah</label>
+          <input id="headFatherName" v-model="headForm.fatherName" />
+        </div>
+        <div class="field">
+          <label for="headMotherName">Nama ibu</label>
+          <input id="headMotherName" v-model="headForm.motherName" />
+        </div>
+        <div class="field">
+          <label for="headStaySince">Mulai tinggal</label>
+          <input id="headStaySince" v-model="headForm.staySince" type="date" />
+        </div>
+        <div class="field">
+          <label for="headResidentStatus">Status penduduk</label>
+          <select id="headResidentStatus" v-model="headForm.residentStatus">
+            <option value="tetap">Tetap</option>
+            <option value="sementara">Sementara/Musiman</option>
+          </select>
+        </div>
+
+        <div class="family-form-section">
+          <h3>Tambah Anggota Warga Sekalian</h3>
+          <button class="secondary-button action-button" type="button" @click="addMemberForm"><AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah Anggota</span></button>
+        </div>
+
+        <div v-if="memberForms.length === 0" class="muted family-form-note">Belum ada anggota tambahan. Anda bisa menambah setelah data KK tersimpan.</div>
+
+        <div v-for="(member, index) in memberForms" :key="`${index}-${member.nik}`" class="member-card">
+          <div class="member-card-header">
+            <strong>Anggota {{ index + 1 }}</strong>
+            <button class="danger-button action-button" type="button" @click="removeMemberForm(index)"><AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span></button>
+          </div>
+          <div class="field">
+            <label :for="`memberNik-${index}`">NIK</label>
+            <input :id="`memberNik-${index}`" v-model="member.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
+          </div>
+          <div class="field">
+            <label :for="`memberName-${index}`">Nama lengkap</label>
+            <input :id="`memberName-${index}`" v-model="member.fullName" required />
+          </div>
+          <div class="field">
+            <label :for="`memberGender-${index}`">Jenis kelamin</label>
+            <select :id="`memberGender-${index}`" v-model="member.gender">
+              <option value="L">Laki-laki</option>
+              <option value="P">Perempuan</option>
+            </select>
+          </div>
+          <div class="field">
+            <label :for="`memberBirthPlace-${index}`">Tempat lahir</label>
+            <input :id="`memberBirthPlace-${index}`" v-model="member.birthPlace" required />
+          </div>
+          <div class="field">
+            <label :for="`memberBirthDate-${index}`">Tanggal lahir</label>
+            <input :id="`memberBirthDate-${index}`" v-model="member.birthDate" type="date" required />
+          </div>
+          <div class="field">
+            <label :for="`memberReligion-${index}`">Agama</label>
+            <input :id="`memberReligion-${index}`" v-model="member.religion" required />
+          </div>
+          <div class="field">
+            <label :for="`memberEducation-${index}`">Pendidikan</label>
+            <input :id="`memberEducation-${index}`" v-model="member.education" />
+          </div>
+          <div class="field">
+            <label :for="`memberOccupation-${index}`">Pekerjaan</label>
+            <input :id="`memberOccupation-${index}`" v-model="member.occupation" />
+          </div>
+          <div class="field">
+            <label :for="`memberMaritalStatus-${index}`">Status perkawinan</label>
+            <select :id="`memberMaritalStatus-${index}`" v-model="member.maritalStatus">
+              <option>Belum Kawin</option><option>Kawin</option><option>Cerai Hidup</option><option>Cerai Mati</option>
+            </select>
+          </div>
+          <div class="field">
+            <label :for="`memberRelationship-${index}`">Hubungan keluarga</label>
+            <input :id="`memberRelationship-${index}`" v-model="member.familyRelationship" required />
+          </div>
+          <div class="field">
+            <label :for="`memberCitizenship-${index}`">Kewarganegaraan</label>
+            <input :id="`memberCitizenship-${index}`" v-model="member.citizenship" />
+          </div>
+          <div class="field">
+            <label :for="`memberFatherName-${index}`">Nama ayah</label>
+            <input :id="`memberFatherName-${index}`" v-model="member.fatherName" />
+          </div>
+          <div class="field">
+            <label :for="`memberMotherName-${index}`">Nama ibu</label>
+            <input :id="`memberMotherName-${index}`" v-model="member.motherName" />
+          </div>
+          <div class="field">
+            <label :for="`memberStaySince-${index}`">Mulai tinggal</label>
+            <input :id="`memberStaySince-${index}`" v-model="member.staySince" type="date" />
+          </div>
+          <div class="field">
+            <label :for="`memberResidentStatus-${index}`">Status penduduk</label>
+            <select :id="`memberResidentStatus-${index}`" v-model="member.residentStatus">
+              <option value="tetap">Tetap</option>
+              <option value="sementara">Sementara/Musiman</option>
+            </select>
+          </div>
+        </div>
+      </template>
+
       <button class="primary-button" type="submit" :disabled="saving">{{ saving ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Tambah KK') }}</button>
       <button class="secondary-button" type="button" @click="formOpen = false">Batal</button>
     </form>
@@ -376,3 +620,54 @@ onMounted(async () => {
     </AppModal>
   </section>
 </template>
+
+<style scoped>
+.family-form-section {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.family-form-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.family-form-note {
+  grid-column: 1 / -1;
+}
+
+.member-card {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border: 1px dashed #cad3dc;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.member-card-header {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-width: 980px) {
+  .member-card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .member-card {
+    grid-template-columns: 1fr;
+  }
+}
+</style>

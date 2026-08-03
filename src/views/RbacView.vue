@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import AppIcon from '@/components/AppIcon.vue'
 import ItemDetailModal from '@/components/ItemDetailModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
@@ -151,7 +152,7 @@ onMounted(loadData)
                   @change="updateRole(role.id, permission.id, $event)"
                 />
               </td>
-              <td><button class="secondary-button" type="button" @click="detailTarget = permission">Lihat</button></td>
+              <td><button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail permission" title="Lihat detail permission" @click="detailTarget = permission"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button></td>
             </tr>
           </tbody>
         </table>
@@ -202,7 +203,7 @@ onMounted(loadData)
                   <option value="deny">Tolak</option>
                 </select>
               </td>
-              <td><button class="secondary-button" type="button" @click="detailTarget = permission">Lihat</button></td>
+              <td><button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail permission" title="Lihat detail permission" @click="detailTarget = permission"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button></td>
               <td>
                 <span :class="['badge', { 'badge-denied': !effectiveUserAllowed(permission.id) }]">
                   {{ effectiveUserAllowed(permission.id) ? 'Diizinkan' : 'Ditolak' }}
