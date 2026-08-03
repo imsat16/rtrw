@@ -374,9 +374,9 @@ onMounted(async () => {
               <th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{
                 sortIndicator('memberCount') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
                 sortIndicator('address') }}</button></th>
               <th>Aksi</th>
@@ -551,7 +551,7 @@ onMounted(async () => {
           </div>
 
           <div class="family-form-section">
-            <h3>Tambah Anggota Warga</h3>
+            <h3>Tambah Anggota Keluarga</h3>
             <button class="secondary-button action-button" type="button" @click="addMemberForm">
               <AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah Anggota</span>
             </button>
