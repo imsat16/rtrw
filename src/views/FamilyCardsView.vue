@@ -4,8 +4,10 @@ import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
-import { deleteFamilyCard, listFamilyCards, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
+import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCards, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
+import { familyRelationshipOptions, citizenshipOptions } from '@/types/domain'
+import { applyFamilyParentAutoFill, normalizeKkNumber, normalizeNumericId } from '@/utils/familyRules'
 import type { FamilyCard, Gender, Region, Resident, ResidentStatus } from '@/types/domain'
 
 type ResidentDraft = {
@@ -54,6 +56,7 @@ const headForm = reactive(createResidentDraft({
   maritalStatus: 'Kawin',
   familyRelationship: 'Kepala Keluarga',
 }))
+const relationshipOptions = ref<string[]>(familyRelationshipOptions)
 const memberForms = ref<ResidentDraft[]>([])
 
 function createResidentDraft(overrides: Partial<ResidentDraft> = {}): ResidentDraft {
@@ -132,6 +135,14 @@ function closeDetail() {
   detailMembers.value = []
 }
 
+async function loadRelationshipOptions() {
+  try {
+    relationshipOptions.value = await listFamilyRelationships()
+  } catch {
+    relationshipOptions.value = [...familyRelationshipOptions]
+  }
+}
+
 function resetForm() {
   editingId.value = ''
   Object.assign(form, {
@@ -171,7 +182,7 @@ function removeMemberForm(index: number) {
 
 function validateUniqueNiks() {
   const nikList = [headForm.nik, ...memberForms.value.map((item) => item.nik)]
-    .map((nik) => nik.trim())
+    .map((nik) => normalizeNumericId(nik, 16))
     .filter(Boolean)
   if (nikList.length !== new Set(nikList).size) {
     throw new Error('NIK kepala keluarga dan anggota harus unik.')
@@ -216,14 +227,18 @@ function resetFilters() {
 
 async function submit() {
   if (!auth.hasPermission('families.manage')) return
+  for (const relationship of relationshipOptions.value) {
+    await ensureFamilyRelationship(relationship)
+  }
   const rt = regions.value.find((item) => item.id === form.rtId && item.type === 'rt')
   if (!rt) return
   saving.value = true
   message.value = ''
   let createdCardId = ''
   try {
+    const normalizedKkNumber = normalizeKkNumber(form.kkNumber)
     const payload = {
-      kkNumber: form.kkNumber,
+      kkNumber: normalizedKkNumber,
       headName: editingId.value ? form.headName : headForm.fullName,
       address: form.address,
       registeredAt: form.registeredAt,
@@ -266,25 +281,31 @@ async function submit() {
       })
 
       for (const member of memberForms.value) {
+        const parentContext = [
+          { ...headForm, fullName: headForm.fullName, gender: headForm.gender, familyRelationship: 'Kepala Keluarga' },
+          ...memberForms.value.filter((candidate) => candidate !== member),
+        ] as const
+        const autoFilledMember = applyFamilyParentAutoFill(member, [...parentContext])
+        if (!autoFilledMember) continue
         await saveResident({
           familyCardId: createdCardId,
           kkNumber: payload.kkNumber,
-          nik: member.nik,
-          fullName: member.fullName,
-          gender: member.gender,
-          birthPlace: member.birthPlace,
-          birthDate: member.birthDate,
-          religion: member.religion,
-          education: member.education,
-          occupation: member.occupation,
-          maritalStatus: member.maritalStatus,
-          familyRelationship: member.familyRelationship,
-          citizenship: member.citizenship,
-          fatherName: member.fatherName,
-          motherName: member.motherName,
+          nik: autoFilledMember.nik,
+          fullName: autoFilledMember.fullName,
+          gender: autoFilledMember.gender,
+          birthPlace: autoFilledMember.birthPlace,
+          birthDate: autoFilledMember.birthDate,
+          religion: autoFilledMember.religion,
+          education: autoFilledMember.education,
+          occupation: autoFilledMember.occupation,
+          maritalStatus: autoFilledMember.maritalStatus,
+          familyRelationship: autoFilledMember.familyRelationship,
+          citizenship: autoFilledMember.citizenship,
+          fatherName: autoFilledMember.fatherName,
+          motherName: autoFilledMember.motherName,
           address: payload.address,
-          staySince: member.staySince,
-          residentStatus: member.residentStatus,
+          staySince: autoFilledMember.staySince,
+          residentStatus: autoFilledMember.residentStatus,
           provinceId: payload.provinceId,
           cityId: payload.cityId,
           districtId: payload.districtId,
@@ -340,6 +361,7 @@ watch(() => form.rwId, () => {
 
 onMounted(async () => {
   regions.value = await listRegions(auth.profile)
+  await loadRelationshipOptions()
   initializeScope()
   await loadCards()
 })
@@ -374,9 +396,9 @@ onMounted(async () => {
               <th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{
                 sortIndicator('memberCount') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw')
-              }}</button></th>
+                  }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt')
-              }}</button></th>
+                  }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
                 sortIndicator('address') }}</button></th>
               <th>Aksi</th>
@@ -446,8 +468,9 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label for="kkNumber">Nomor KK</label>
-          <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric" pattern="[0-9]{16}" minlength="16"
-            maxlength="16" title="Nomor KK harus terdiri dari 16 digit angka" />
+          <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric"
+            placeholder="contoh: 1234.5678-9012.3456" title="Nomor KK bisa menggunakan tanda titik atau tanda hubung"
+            @input="form.kkNumber = normalizeNumericId(form.kkNumber, 16)" />
         </div>
         <div v-if="editingId" class="field">
           <label for="headName">Nama kepala keluarga</label>
@@ -484,7 +507,8 @@ onMounted(async () => {
           <div class="field">
             <label for="headNik">NIK kepala keluarga</label>
             <input id="headNik" v-model="headForm.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16"
-              maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
+              maxlength="16" title="NIK harus terdiri dari 16 digit angka"
+              @input="headForm.nik = normalizeNumericId(headForm.nik, 16)" />
           </div>
           <div class="field">
             <label for="headFullName">Nama lengkap</label>
@@ -528,7 +552,9 @@ onMounted(async () => {
           </div>
           <div class="field">
             <label for="headCitizenship">Kewarganegaraan</label>
-            <input id="headCitizenship" v-model="headForm.citizenship" />
+            <select id="headCitizenship" v-model="headForm.citizenship">
+              <option v-for="option in citizenshipOptions" :key="option" :value="option">{{ option }}</option>
+            </select>
           </div>
           <div class="field">
             <label for="headFatherName">Nama ayah</label>
@@ -560,7 +586,7 @@ onMounted(async () => {
           <div v-if="memberForms.length === 0" class="muted family-form-note">Belum ada anggota tambahan. Anda bisa
             menambah setelah data KK tersimpan.</div>
 
-          <div v-for="(member, index) in memberForms" :key="`${index}-${member.nik}`" class="member-card">
+          <div v-for="(member, index) in memberForms" :key="`member-${index}`" class="member-card">
             <div class="member-card-header">
               <strong>Anggota {{ index + 1 }}</strong>
               <button class="danger-button action-button" type="button" @click="removeMemberForm(index)">
@@ -570,7 +596,8 @@ onMounted(async () => {
             <div class="field">
               <label :for="`memberNik-${index}`">NIK</label>
               <input :id="`memberNik-${index}`" v-model="member.nik" required inputmode="numeric" pattern="[0-9]{16}"
-                minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" />
+                minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka"
+                @input="member.nik = normalizeNumericId(member.nik, 16)" />
             </div>
             <div class="field">
               <label :for="`memberName-${index}`">Nama lengkap</label>
@@ -614,11 +641,15 @@ onMounted(async () => {
             </div>
             <div class="field">
               <label :for="`memberRelationship-${index}`">Hubungan keluarga</label>
-              <input :id="`memberRelationship-${index}`" v-model="member.familyRelationship" required />
+              <select :id="`memberRelationship-${index}`" v-model="member.familyRelationship" required>
+                <option v-for="option in relationshipOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
             </div>
             <div class="field">
               <label :for="`memberCitizenship-${index}`">Kewarganegaraan</label>
-              <input :id="`memberCitizenship-${index}`" v-model="member.citizenship" />
+              <select :id="`memberCitizenship-${index}`" v-model="member.citizenship">
+                <option v-for="option in citizenshipOptions" :key="option" :value="option">{{ option }}</option>
+              </select>
             </div>
             <div class="field">
               <label :for="`memberFatherName-${index}`">Nama ayah</label>

@@ -11,6 +11,29 @@ create table if not exists public.master_roles (
   sort_order smallint not null unique
 );
 
+create table if not exists public.master_family_relationships (
+  id uuid primary key default gen_random_uuid(),
+  label text not null unique,
+  sort_order smallint not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.master_family_relationships (id, label, sort_order)
+values
+  ('d4a8c9af-23d8-4b8b-9c84-91eb797a284d', 'Kepala Keluarga', 1),
+  ('d1305811-4c84-498b-bc97-bd8f0d681f89', 'Suami', 2),
+  ('ff3ffb7a-8b90-4e05-9e6d-53b85448667c', 'Istri', 3),
+  ('ed43881a-0a2f-4c49-b0f0-5b1ac857ae31', 'Ayah', 4),
+  ('c60db875-6ea9-4d97-bb00-7a42603b8af5', 'Ibu', 5),
+  ('f4cf3a4d-8223-4d2a-9d8e-b1d70a7d27e7', 'Anak', 6),
+  ('ab4e8c31-c76a-44f0-9f2a-7e41b59ef3d3', 'Mertua', 7),
+  ('40d9b0d8-df3a-4cca-a4ef-a3670ee0c58e', 'Cucu', 8),
+  ('a60e7df7-85d0-4527-8ae2-6df1d80d6f0f', 'Lainnya', 9)
+on conflict (label) do update
+set sort_order = excluded.sort_order,
+    updated_at = now();
+
 insert into public.master_roles (id, code, label, scope_level, sort_order) values
   ('1deaec79-1b39-4d30-8bb3-f343153a7098', 'superadmin', 'Superadmin', 'all', 1),
   ('4a4dcbe2-5029-41a9-a298-019339161af4', 'ketua_rw', 'Ketua RW', 'rw', 2),
@@ -450,7 +473,7 @@ grant execute on function app_private.current_profile_rt_id() to authenticated;
 grant execute on function app_private.has_permission(text) to authenticated;
 grant execute on function app_private.can_access_scope(uuid, uuid) to authenticated;
 
-grant select on public.master_roles, public.master_permissions to authenticated;
+grant select on public.master_roles, public.master_permissions, public.master_family_relationships to authenticated;
 grant select, insert, update, delete on public.role_permissions to authenticated;
 grant select, insert, update, delete on public.user_permissions to authenticated;
 grant select, insert, update, delete on public.profiles to authenticated;
@@ -470,6 +493,7 @@ grant execute on function public.create_family_card_with_head(
 
 alter table public.master_roles enable row level security;
 alter table public.master_permissions enable row level security;
+alter table public.master_family_relationships enable row level security;
 alter table public.role_permissions enable row level security;
 alter table public.user_permissions enable row level security;
 alter table public.profiles enable row level security;
@@ -495,7 +519,7 @@ begin
     from pg_policies
     where schemaname = 'public'
       and tablename in (
-        'master_roles', 'master_permissions', 'role_permissions', 'user_permissions',
+        'master_roles', 'master_permissions', 'master_family_relationships', 'role_permissions', 'user_permissions',
         'profiles', 'master_provinces', 'master_cities', 'master_districts',
         'master_villages', 'master_rws', 'master_rts', 'family_cards', 'residents',
         'resident_mutations', 'report_exports'
@@ -507,6 +531,7 @@ end $$;
 
 create policy "master roles read" on public.master_roles for select to authenticated using (true);
 create policy "master permissions read" on public.master_permissions for select to authenticated using (true);
+create policy "family relationship master read" on public.master_family_relationships for select to authenticated using (true);
 create policy "role permissions read" on public.role_permissions for select to authenticated using (true);
 create policy "role permissions manage" on public.role_permissions for all to authenticated
 using (app_private.current_profile_role() = 'superadmin')

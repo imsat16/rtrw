@@ -8,6 +8,8 @@ import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
 import { deleteResident, listFamilyCards, listMutations, listRegions, listResidents, saveMutation, saveResident } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
+import { citizenshipOptions, familyRelationshipOptions } from '@/types/domain'
+import { normalizeNumericId } from '@/utils/familyRules'
 import type { FamilyCard, Gender, MutationType, Region, Resident, ResidentMutation, ResidentStatus } from '@/types/domain'
 
 const auth = useAuthStore()
@@ -32,6 +34,8 @@ const residentForm = reactive({
   staySince: '', residentStatus: 'tetap' as ResidentStatus,
 })
 const mutationForm = reactive({ residentId: '', mutationType: 'lahir' as MutationType, mutationDate: '', note: '' })
+const residentSaving = ref(false)
+const mutationSaving = ref(false)
 
 const rwOptions = computed(() => {
   const items = regions.value.filter((item) => item.type === 'rw')
@@ -151,16 +155,17 @@ function resetFilters() {
 async function submitResident() {
   const card = selectedCard.value
   if (!card || !auth.hasPermission('families.manage')) return
+  residentSaving.value = true
   try {
     await saveResident({
-    familyCardId: card.id, kkNumber: card.kkNumber, nik: residentForm.nik, fullName: residentForm.fullName,
-    gender: residentForm.gender, birthPlace: residentForm.birthPlace, birthDate: residentForm.birthDate,
-    religion: residentForm.religion, education: residentForm.education, occupation: residentForm.occupation,
-    maritalStatus: residentForm.maritalStatus, familyRelationship: residentForm.familyRelationship,
-    citizenship: residentForm.citizenship, fatherName: residentForm.fatherName, motherName: residentForm.motherName,
-    address: card.address, staySince: residentForm.staySince, residentStatus: residentForm.residentStatus,
-    provinceId: card.provinceId, cityId: card.cityId, districtId: card.districtId, villageId: card.villageId,
-    rwId: card.rwId, rtId: card.rtId,
+      familyCardId: card.id, kkNumber: card.kkNumber, nik: residentForm.nik, fullName: residentForm.fullName,
+      gender: residentForm.gender, birthPlace: residentForm.birthPlace, birthDate: residentForm.birthDate,
+      religion: residentForm.religion, education: residentForm.education, occupation: residentForm.occupation,
+      maritalStatus: residentForm.maritalStatus, familyRelationship: residentForm.familyRelationship,
+      citizenship: residentForm.citizenship, fatherName: residentForm.fatherName, motherName: residentForm.motherName,
+      address: card.address, staySince: residentForm.staySince, residentStatus: residentForm.residentStatus,
+      provinceId: card.provinceId, cityId: card.cityId, districtId: card.districtId, villageId: card.villageId,
+      rwId: card.rwId, rtId: card.rtId,
     }, editingResidentId.value || undefined)
     message.value = editingResidentId.value ? 'Data warga berhasil diperbarui.' : 'Data warga berhasil ditambahkan.'
     messageError.value = false
@@ -170,6 +175,8 @@ async function submitResident() {
   } catch (error) {
     message.value = error instanceof Error ? error.message : 'Gagal menyimpan data warga.'
     messageError.value = true
+  } finally {
+    residentSaving.value = false
   }
 }
 
@@ -190,13 +197,14 @@ async function confirmDelete() {
 async function submitMutation() {
   const resident = selectedResident.value
   if (!resident || !auth.hasPermission('families.manage')) return
+  mutationSaving.value = true
   try {
     await saveMutation({
-    residentId: resident.id, residentName: resident.fullName, gender: resident.gender,
-    mutationType: mutationForm.mutationType, mutationDate: mutationForm.mutationDate,
-    note: mutationForm.note, residentStatus: resident.residentStatus, provinceId: resident.provinceId,
-    cityId: resident.cityId, districtId: resident.districtId, villageId: resident.villageId,
-    rwId: resident.rwId, rtId: resident.rtId,
+      residentId: resident.id, residentName: resident.fullName, gender: resident.gender,
+      mutationType: mutationForm.mutationType, mutationDate: mutationForm.mutationDate,
+      note: mutationForm.note, residentStatus: resident.residentStatus, provinceId: resident.provinceId,
+      cityId: resident.cityId, districtId: resident.districtId, villageId: resident.villageId,
+      rwId: resident.rwId, rtId: resident.rtId,
     })
     mutationForm.note = ''
     message.value = 'Mutasi LAMPID berhasil dicatat.'
@@ -206,6 +214,8 @@ async function submitMutation() {
   } catch (error) {
     message.value = error instanceof Error ? error.message : 'Gagal mencatat mutasi.'
     messageError.value = true
+  } finally {
+    mutationSaving.value = false
   }
 }
 
@@ -227,66 +237,190 @@ onMounted(async () => {
       <div class="section-header">
         <div><strong>Daftar Warga</strong><span class="badge">{{ residents.length }} warga</span></div>
         <div class="table-actions">
-          <button class="secondary-button action-button icon-compact-mobile" type="button" aria-label="Filter" title="Filter" @click="openFilters"><AppIcon class="action-icon" icon="mdi:filter-variant" /><span class="action-label">Filter</span></button>
-          <button v-if="auth.hasPermission('families.manage')" class="secondary-button action-button" type="button" @click="mutationFormOpen = true"><AppIcon class="action-icon" icon="mdi:clipboard-pulse-outline" /><span class="action-label">Catat LAMPID</span></button>
-          <button v-if="auth.hasPermission('families.manage')" class="primary-button action-button icon-compact-mobile" type="button" aria-label="Tambah Warga" title="Tambah Warga" @click="openCreateResident"><AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah Warga</span></button>
+          <button class="secondary-button action-button icon-compact-mobile" type="button" aria-label="Filter"
+            title="Filter" @click="openFilters">
+            <AppIcon class="action-icon" icon="mdi:filter-variant" /><span class="action-label">Filter</span>
+          </button>
+          <button v-if="auth.hasPermission('families.manage')" class="secondary-button action-button" type="button"
+            @click="mutationFormOpen = true">
+            <AppIcon class="action-icon" icon="mdi:clipboard-pulse-outline" /><span class="action-label">Catat
+              LAMPID</span>
+          </button>
+          <button v-if="auth.hasPermission('families.manage')" class="primary-button action-button icon-compact-mobile"
+            type="button" aria-label="Tambah Warga" title="Tambah Warga" @click="openCreateResident">
+            <AppIcon class="action-icon" icon="mdi:plus" /><span class="action-label">Tambah Warga</span>
+          </button>
         </div>
       </div>
-      <div class="table-wrap"><table>
-        <thead><tr><th><button class="sort-button" type="button" @click="toggleSort('nik')">NIK {{ sortIndicator('nik') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('kkNumber')">No. KK {{ sortIndicator('kkNumber') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('fullName')">Nama {{ sortIndicator('fullName') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('familyRelationship')">Hubungan {{ sortIndicator('familyRelationship') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('gender')">JK {{ sortIndicator('gender') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('birthDate')">TTL {{ sortIndicator('birthDate') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('residentStatus')">Status {{ sortIndicator('residentStatus') }}</button></th><th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{ sortIndicator('address') }}</button></th><th>Aksi</th></tr></thead>
-        <tbody><tr v-for="resident in paginatedItems" :key="resident.id"><td>{{ resident.nik }}</td><td>{{ resident.kkNumber }}</td><td>{{ resident.fullName }}</td><td>{{ resident.familyRelationship }}</td><td>{{ resident.gender }}</td><td>{{ resident.birthPlace }}, {{ resident.birthDate }}</td><td>{{ resident.residentStatus }}</td><td>{{ resident.address }}</td><td class="table-actions"><button class="secondary-button action-button icon-only-button" type="button" aria-label="Lihat detail" title="Lihat detail" @click="detailTarget = resident"><AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span></button><template v-if="auth.hasPermission('families.manage')"><button class="secondary-button action-button icon-only-button" type="button" aria-label="Edit warga" title="Edit warga" @click="editResident(resident)"><AppIcon class="action-icon" icon="mdi:pencil-outline" /><span class="action-label">Edit</span></button><button class="danger-button action-button icon-only-button" type="button" aria-label="Hapus warga" title="Hapus warga" @click="deleteTarget = resident"><AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span></button></template></td></tr><tr v-if="residents.length === 0"><td colspan="9" class="muted">Data warga tidak ditemukan.</td></tr></tbody>
-      </table></div>
-      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="residents.length" :total-pages="totalPages" />
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th><button class="sort-button" type="button" @click="toggleSort('nik')">NIK {{ sortIndicator('nik')
+                  }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('kkNumber')">No. KK {{
+                sortIndicator('kkNumber') }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('fullName')">Nama {{
+                sortIndicator('fullName') }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('familyRelationship')">Hubungan {{
+                sortIndicator('familyRelationship') }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('gender')">JK {{ sortIndicator('gender')
+                  }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('birthDate')">TTL {{
+                sortIndicator('birthDate') }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('residentStatus')">Status {{
+                sortIndicator('residentStatus') }}</button></th>
+              <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
+                sortIndicator('address') }}</button></th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="resident in paginatedItems" :key="resident.id">
+              <td>{{ resident.nik }}</td>
+              <td>{{ resident.kkNumber }}</td>
+              <td>{{ resident.fullName }}</td>
+              <td>{{ resident.familyRelationship }}</td>
+              <td>{{ resident.gender }}</td>
+              <td>{{ resident.birthPlace }}, {{ resident.birthDate }}</td>
+              <td>{{ resident.residentStatus }}</td>
+              <td>{{ resident.address }}</td>
+              <td class="table-actions"><button class="secondary-button action-button icon-only-button" type="button"
+                  aria-label="Lihat detail" title="Lihat detail" @click="detailTarget = resident">
+                  <AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span>
+                </button><template v-if="auth.hasPermission('families.manage')"><button
+                    class="secondary-button action-button icon-only-button" type="button" aria-label="Edit warga"
+                    title="Edit warga" @click="editResident(resident)">
+                    <AppIcon class="action-icon" icon="mdi:pencil-outline" /><span class="action-label">Edit</span>
+                  </button><button class="danger-button action-button icon-only-button" type="button"
+                    aria-label="Hapus warga" title="Hapus warga" @click="deleteTarget = resident">
+                    <AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span>
+                  </button></template>
+              </td>
+            </tr>
+            <tr v-if="residents.length === 0">
+              <td colspan="9" class="muted">Data warga tidak ditemukan.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="residents.length"
+        :total-pages="totalPages" />
     </div>
 
     <AppModal :open="filterOpen" title="Filter Data Warga" @close="filterOpen = false">
       <form class="form-grid modal-form" @submit.prevent="applyFilters">
-        <div class="field"><label for="residentSearch">Cari warga</label><input id="residentSearch" v-model="filterDraft.search" placeholder="NIK, nama, atau nomor KK" /></div>
-        <div class="field"><label for="residentRw">RW</label><select id="residentRw" v-model="filterDraft.rwId" :disabled="auth.profile?.role !== 'superadmin'"><option value="">Semua RW</option><option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option></select></div>
-        <div class="field"><label for="residentRt">RT</label><select id="residentRt" v-model="filterDraft.rtId" :disabled="Boolean(auth.profile?.rtId)"><option value="">Semua RT</option><option v-for="rt in rtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option></select></div>
+        <div class="field"><label for="residentSearch">Cari warga</label><input id="residentSearch"
+            v-model="filterDraft.search" placeholder="NIK, nama, atau nomor KK" /></div>
+        <div class="field"><label for="residentRw">RW</label><select id="residentRw" v-model="filterDraft.rwId"
+            :disabled="auth.profile?.role !== 'superadmin'">
+            <option value="">Semua RW</option>
+            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option>
+          </select></div>
+        <div class="field"><label for="residentRt">RT</label><select id="residentRt" v-model="filterDraft.rtId"
+            :disabled="Boolean(auth.profile?.rtId)">
+            <option value="">Semua RT</option>
+            <option v-for="rt in rtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option>
+          </select></div>
         <button class="primary-button" type="submit">Cari</button>
         <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
       </form>
     </AppModal>
 
-    <AppModal :open="residentFormOpen" :title="editingResidentId ? 'Edit Warga' : 'Tambah Warga'" size="large" @close="residentFormOpen = false">
-    <form class="form-grid compact modal-form" @submit.prevent="submitResident">
-      <div class="field"><label for="familyCardId">Kartu keluarga</label><AppAutocomplete input-id="familyCardId" v-model="residentForm.familyCardId" :items="familyCardItems" placeholder="Cari nomor KK, NIK, atau kepala keluarga" empty-text="Kartu keluarga tidak ditemukan" required /></div>
-      <div class="field"><label for="nik">NIK</label><input id="nik" v-model="residentForm.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka" /></div>
-      <div class="field"><label for="fullName">Nama lengkap</label><input id="fullName" v-model="residentForm.fullName" required /></div>
-      <div class="field"><label for="gender">Jenis kelamin</label><select id="gender" v-model="residentForm.gender"><option value="L">Laki-laki</option><option value="P">Perempuan</option></select></div>
-      <div class="field"><label for="birthPlace">Tempat lahir</label><input id="birthPlace" v-model="residentForm.birthPlace" required /></div>
-      <div class="field"><label for="birthDate">Tanggal lahir</label><input id="birthDate" v-model="residentForm.birthDate" type="date" required /></div>
-      <div class="field"><label for="religion">Agama</label><input id="religion" v-model="residentForm.religion" required /></div>
-      <div class="field"><label for="education">Pendidikan</label><input id="education" v-model="residentForm.education" /></div>
-      <div class="field"><label for="occupation">Pekerjaan</label><input id="occupation" v-model="residentForm.occupation" /></div>
-      <div class="field"><label for="maritalStatus">Status perkawinan</label><select id="maritalStatus" v-model="residentForm.maritalStatus"><option>Belum Kawin</option><option>Kawin</option><option>Cerai Hidup</option><option>Cerai Mati</option></select></div>
-      <div class="field"><label for="familyRelationship">Hubungan keluarga</label><input id="familyRelationship" v-model="residentForm.familyRelationship" required /></div>
-      <div class="field"><label for="citizenship">Kewarganegaraan</label><input id="citizenship" v-model="residentForm.citizenship" /></div>
-      <div class="field"><label for="fatherName">Nama ayah</label><input id="fatherName" v-model="residentForm.fatherName" /></div>
-      <div class="field"><label for="motherName">Nama ibu</label><input id="motherName" v-model="residentForm.motherName" /></div>
-      <div class="field"><label for="staySince">Mulai tinggal</label><input id="staySince" v-model="residentForm.staySince" type="date" /></div>
-      <div class="field"><label for="residentStatus">Status penduduk</label><select id="residentStatus" v-model="residentForm.residentStatus"><option value="tetap">Tetap</option><option value="sementara">Sementara/Musiman</option></select></div>
-      <button class="primary-button" type="submit">{{ editingResidentId ? 'Simpan Perubahan' : 'Tambah Warga' }}</button>
-      <button class="secondary-button" type="button" @click="residentFormOpen = false">Batal</button>
-    </form>
+    <AppModal :open="residentFormOpen" :title="editingResidentId ? 'Edit Warga' : 'Tambah Warga'" size="large"
+      @close="residentFormOpen = false">
+      <form class="form-grid compact modal-form" @submit.prevent="submitResident">
+        <div class="field"><label for="familyCardId">Kartu keluarga</label>
+          <AppAutocomplete input-id="familyCardId" v-model="residentForm.familyCardId" :items="familyCardItems"
+            placeholder="Cari nomor KK, NIK, atau kepala keluarga" empty-text="Kartu keluarga tidak ditemukan"
+            required />
+        </div>
+        <div class="field"><label for="nik">NIK</label><input id="nik" v-model="residentForm.nik" required
+            inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16"
+            title="NIK harus terdiri dari 16 digit angka"
+            @input="residentForm.nik = normalizeNumericId(residentForm.nik, 16)" /></div>
+        <div class="field"><label for="fullName">Nama lengkap</label><input id="fullName"
+            v-model="residentForm.fullName" required /></div>
+        <div class="field"><label for="gender">Jenis kelamin</label><select id="gender" v-model="residentForm.gender">
+            <option value="L">Laki-laki</option>
+            <option value="P">Perempuan</option>
+          </select></div>
+        <div class="field"><label for="birthPlace">Tempat lahir</label><input id="birthPlace"
+            v-model="residentForm.birthPlace" required /></div>
+        <div class="field"><label for="birthDate">Tanggal lahir</label><input id="birthDate"
+            v-model="residentForm.birthDate" type="date" required /></div>
+        <div class="field"><label for="religion">Agama</label><input id="religion" v-model="residentForm.religion"
+            required /></div>
+        <div class="field"><label for="education">Pendidikan</label><input id="education"
+            v-model="residentForm.education" /></div>
+        <div class="field"><label for="occupation">Pekerjaan</label><input id="occupation"
+            v-model="residentForm.occupation" /></div>
+        <div class="field"><label for="maritalStatus">Status perkawinan</label><select id="maritalStatus"
+            v-model="residentForm.maritalStatus">
+            <option>Belum Kawin</option>
+            <option>Kawin</option>
+            <option>Cerai Hidup</option>
+            <option>Cerai Mati</option>
+          </select></div>
+        <div class="field"><label for="familyRelationship">Hubungan keluarga</label><select id="familyRelationship"
+            v-model="residentForm.familyRelationship" required>
+            <option v-for="option in familyRelationshipOptions" :key="option" :value="option">{{ option }}</option>
+          </select></div>
+        <div class="field"><label for="citizenship">Kewarganegaraan</label><select id="citizenship"
+            v-model="residentForm.citizenship">
+            <option v-for="option in citizenshipOptions" :key="option" :value="option">{{ option }}</option>
+          </select></div>
+        <div class="field"><label for="fatherName">Nama ayah</label><input id="fatherName"
+            v-model="residentForm.fatherName" /></div>
+        <div class="field"><label for="motherName">Nama ibu</label><input id="motherName"
+            v-model="residentForm.motherName" /></div>
+        <div class="field"><label for="staySince">Mulai tinggal</label><input id="staySince"
+            v-model="residentForm.staySince" type="date" /></div>
+        <div class="field"><label for="residentStatus">Status penduduk</label><select id="residentStatus"
+            v-model="residentForm.residentStatus">
+            <option value="tetap">Tetap</option>
+            <option value="sementara">Sementara/Musiman</option>
+          </select></div>
+        <button class="primary-button" type="submit" :disabled="residentSaving">{{ residentSaving ? 'Menyimpan...' :
+          (editingResidentId ? 'Simpan Perubahan' : 'Tambah Warga') }}</button>
+        <button class="secondary-button" type="button" @click="residentFormOpen = false"
+          :disabled="residentSaving">Batal</button>
+      </form>
     </AppModal>
 
-    <ItemDetailModal :open="Boolean(detailTarget)" title="Detail Warga" :rows="detailRows" @close="detailTarget = null" />
+    <ItemDetailModal :open="Boolean(detailTarget)" title="Detail Warga" :rows="detailRows"
+      @close="detailTarget = null" />
     <AppModal :open="Boolean(deleteTarget)" title="Hapus Warga" size="small" @close="deleteTarget = null">
       <p>Hapus data warga <strong>{{ deleteTarget?.fullName }}</strong>?</p>
-      <footer class="modal-actions"><button class="secondary-button" type="button" @click="deleteTarget = null">Batal</button><button class="danger-button" type="button" @click="confirmDelete">Hapus</button></footer>
+      <footer class="modal-actions"><button class="secondary-button" type="button"
+          @click="deleteTarget = null">Batal</button><button class="danger-button" type="button"
+          @click="confirmDelete">Hapus</button></footer>
     </AppModal>
 
     <AppModal :open="mutationFormOpen" title="Catat LAMPID" @close="mutationFormOpen = false">
-    <form class="form-grid modal-form" @submit.prevent="submitMutation">
-      <div class="field"><label for="residentId">Warga</label><select id="residentId" v-model="mutationForm.residentId" required><option value="">Pilih warga</option><option v-for="resident in residents" :key="resident.id" :value="resident.id">{{ resident.fullName }} - {{ resident.nik }}</option></select></div>
-      <div class="field"><label for="mutationType">Jenis LAMPID</label><select id="mutationType" v-model="mutationForm.mutationType"><option value="lahir">Lahir</option><option value="mati">Meninggal</option><option value="pindah">Pindah</option><option value="datang">Datang</option></select></div>
-      <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate" v-model="mutationForm.mutationDate" required type="date" /></div>
-      <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
-      <button class="primary-button" type="submit">Catat LAMPID</button>
-      <button class="secondary-button" type="button" @click="mutationFormOpen = false">Batal</button>
-    </form>
+      <form class="form-grid modal-form" @submit.prevent="submitMutation">
+        <div class="field"><label for="residentId">Warga</label><select id="residentId"
+            v-model="mutationForm.residentId" required>
+            <option value="">Pilih warga</option>
+            <option v-for="resident in residents" :key="resident.id" :value="resident.id">{{ resident.fullName }} - {{
+              resident.nik }}</option>
+          </select></div>
+        <div class="field"><label for="mutationType">Jenis LAMPID</label><select id="mutationType"
+            v-model="mutationForm.mutationType">
+            <option value="lahir">Lahir</option>
+            <option value="mati">Meninggal</option>
+            <option value="pindah">Pindah</option>
+            <option value="datang">Datang</option>
+          </select></div>
+        <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
+            v-model="mutationForm.mutationDate" required type="date" /></div>
+        <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
+        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' :
+          'Catat
+          LAMPID' }}</button>
+        <button class="secondary-button" type="button" @click="mutationFormOpen = false"
+          :disabled="mutationSaving">Batal</button>
+      </form>
     </AppModal>
   </section>
 </template>

@@ -1,6 +1,9 @@
 import { supabase } from '@/lib/supabase'
+import { normalizeKkNumber, normalizeNumericId } from '@/utils/familyRules'
 import type {
+  Citizenship,
   FamilyCard,
+  FamilyRelationship,
   Permission,
   PermissionCode,
   Region,
@@ -122,11 +125,15 @@ function assertNoError(error: unknown) {
 }
 
 function assertSixteenDigits(value: string, label: string) {
-  if (!/^\d{16}$/.test(value)) throw new Error(`${label} harus terdiri dari 16 digit angka.`)
+  const normalized = normalizeNumericId(value, 16)
+  if (!/^\d{16}$/.test(normalized)) throw new Error(`${label} harus terdiri dari 16 digit angka.`)
+  return normalized
 }
 
 function clean<T extends Record<string, unknown>>(value: T) {
-  return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined && item !== ''))
+  return Object.fromEntries(
+    Object.entries(value).filter(([, item]) => item !== undefined && item !== ''),
+  )
 }
 
 function mapRole(row: RoleRow): Role {
@@ -294,7 +301,11 @@ function mutationPayload(mutation: Omit<ResidentMutation, 'id'>) {
 }
 
 export async function getProfile(userId: string) {
-  const { data, error } = await supabase.from('profiles').select('*, master_roles(code)').eq('id', userId).single()
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, master_roles(code)')
+    .eq('id', userId)
+    .single()
   assertNoError(error)
   return mapProfile(data as ProfileRow)
 }
@@ -306,7 +317,10 @@ export async function listRoles() {
 }
 
 export async function listProfiles() {
-  const { data, error } = await supabase.from('profiles').select('*, master_roles(code)').order('display_name')
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*, master_roles(code)')
+    .order('display_name')
   assertNoError(error)
   return (data as ProfileRow[]).map(mapProfile)
 }
@@ -326,7 +340,7 @@ async function invokeManagedUser(body: Record<string, unknown>) {
     const response = (error as { context?: Response }).context
     if (response) {
       try {
-        const payload = await response.clone().json() as { message?: string }
+        const payload = (await response.clone().json()) as { message?: string }
         message = payload.message || message
       } catch {
         // Gunakan pesan bawaan client jika response bukan JSON.
@@ -358,7 +372,10 @@ async function managedUserPayload(profile: Omit<UserProfile, 'uid' | 'roleId'>) 
   }
 }
 
-export async function createManagedUser(profile: Omit<UserProfile, 'uid' | 'roleId'>, password: string) {
+export async function createManagedUser(
+  profile: Omit<UserProfile, 'uid' | 'roleId'>,
+  password: string,
+) {
   return invokeManagedUser({ action: 'create', ...(await managedUserPayload(profile)), password })
 }
 
@@ -367,7 +384,12 @@ export async function updateManagedUser(
   profile: Omit<UserProfile, 'uid' | 'roleId'>,
   password?: string,
 ) {
-  return invokeManagedUser({ action: 'update', uid, ...(await managedUserPayload(profile)), password: password || undefined })
+  return invokeManagedUser({
+    action: 'update',
+    uid,
+    ...(await managedUserPayload(profile)),
+    password: password || undefined,
+  })
 }
 
 export async function deleteManagedUser(uid: string) {
@@ -383,25 +405,34 @@ export async function listRegions(profile: UserProfile | null = null) {
     'master_rws',
     'master_rts',
   ] as const
-  const responses = await Promise.all(tables.map((table) => {
-    let request = supabase.from(table).select('*').order('name')
-    if (table === 'master_rws' && profile?.role !== 'superadmin' && profile?.rwId) {
-      request = request.eq('id', profile.rwId)
-    }
-    if (table === 'master_rts' && profile?.role !== 'superadmin') {
-      if (['ketua_rw', 'staff_rw'].includes(profile?.role ?? '') && profile?.rwId) {
-        request = request.eq('rw_id', profile.rwId)
-      } else if (profile?.rtId) {
-        request = request.eq('id', profile.rtId)
+  const responses = await Promise.all(
+    tables.map((table) => {
+      let request = supabase.from(table).select('*').order('name')
+      if (table === 'master_rws' && profile?.role !== 'superadmin' && profile?.rwId) {
+        request = request.eq('id', profile.rwId)
       }
-    }
-    return request
-  }))
-  responses.forEach(({ error }) => assertNoError(error))
-  const [provinceRows = [], cityRows = [], districtRows = [], villageRows = [], rwRows = [], rtRows = []] = responses.map(
-    ({ data }) => (data ?? []) as MasterRegionRow[],
+      if (table === 'master_rts' && profile?.role !== 'superadmin') {
+        if (['ketua_rw', 'staff_rw'].includes(profile?.role ?? '') && profile?.rwId) {
+          request = request.eq('rw_id', profile.rwId)
+        } else if (profile?.rtId) {
+          request = request.eq('id', profile.rtId)
+        }
+      }
+      return request
+    }),
   )
-  const provinces = provinceRows.map((row) => toRegion(row, 'province', undefined, { provinceId: row.id }))
+  responses.forEach(({ error }) => assertNoError(error))
+  const [
+    provinceRows = [],
+    cityRows = [],
+    districtRows = [],
+    villageRows = [],
+    rwRows = [],
+    rtRows = [],
+  ] = responses.map(({ data }) => (data ?? []) as MasterRegionRow[])
+  const provinces = provinceRows.map((row) =>
+    toRegion(row, 'province', undefined, { provinceId: row.id }),
+  )
   const cities = cityRows.map((row) =>
     toRegion(row, 'city', row.province_id, { provinceId: row.province_id, cityId: row.id }),
   )
@@ -451,13 +482,15 @@ export async function listRegions(profile: UserProfile | null = null) {
   if (!profile || profile.role === 'superadmin' || !profile.rwId) return regions
 
   const scopedRw = rws.find((row) => row.id === profile.rwId)
-  const lineageIds = new Set([
-    scopedRw?.provinceId,
-    scopedRw?.cityId,
-    scopedRw?.districtId,
-    scopedRw?.villageId,
-    profile.rwId,
-  ].filter((id): id is string => Boolean(id)))
+  const lineageIds = new Set(
+    [
+      scopedRw?.provinceId,
+      scopedRw?.cityId,
+      scopedRw?.districtId,
+      scopedRw?.villageId,
+      profile.rwId,
+    ].filter((id): id is string => Boolean(id)),
+  )
 
   return regions.filter((region) => lineageIds.has(region.id) || region.rwId === profile.rwId)
 }
@@ -552,17 +585,15 @@ export async function listUserPermissions(userId?: string) {
 }
 
 export async function saveRolePermission(roleId: string, permissionId: string, allowed: boolean) {
-  const { error } = await supabase
-    .from('role_permissions')
-    .upsert(
-      {
-        role_id: roleId,
-        permission_id: permissionId,
-        allowed,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'role_id,permission_id' },
-    )
+  const { error } = await supabase.from('role_permissions').upsert(
+    {
+      role_id: roleId,
+      permission_id: permissionId,
+      allowed,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'role_id,permission_id' },
+  )
   assertNoError(error)
 }
 
@@ -571,22 +602,59 @@ export async function saveUserPermission(
   permissionId: string,
   allowed: boolean | null,
 ) {
-  const request = allowed === null
-    ? supabase.from('user_permissions').delete().eq('user_id', userId).eq('permission_id', permissionId)
-    : supabase.from('user_permissions').upsert(
-        {
-          user_id: userId,
-          permission_id: permissionId,
-          allowed,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: 'user_id,permission_id' },
-      )
+  const request =
+    allowed === null
+      ? supabase
+          .from('user_permissions')
+          .delete()
+          .eq('user_id', userId)
+          .eq('permission_id', permissionId)
+      : supabase.from('user_permissions').upsert(
+          {
+            user_id: userId,
+            permission_id: permissionId,
+            allowed,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'user_id,permission_id' },
+        )
   const { error } = await request
   assertNoError(error)
 }
 
-export async function listFamilyCards(profile: UserProfile | null, rtId?: string, rwId?: string, search?: string) {
+export async function listFamilyRelationships() {
+  const { data, error } = await supabase
+    .from('master_family_relationships')
+    .select('*')
+    .order('sort_order')
+  assertNoError(error)
+  return (data ?? []).map((row) => String(row.label))
+}
+
+export async function ensureFamilyRelationship(label: string) {
+  const value = String(label ?? '').trim()
+  if (!value) return ''
+  const { data: existing, error: existingError } = await supabase
+    .from('master_family_relationships')
+    .select('id')
+    .eq('label', value)
+    .maybeSingle()
+  assertNoError(existingError)
+  if (existing) return value
+  const { error } = await supabase.from('master_family_relationships').insert({
+    label: value,
+    sort_order: Date.now(),
+  })
+  assertNoError(error)
+  return value
+}
+
+export async function listFamilyCards(
+  profile: UserProfile | null,
+  rtId?: string,
+  rwId?: string,
+  search?: string,
+) {
   let request = supabase.from('family_cards').select('*, residents(nik)').order('head_name')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
@@ -658,8 +726,8 @@ export async function createFamilyCardWithHead(input: FamilyHeadInput) {
 }
 
 export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) {
-  assertSixteenDigits(card.kkNumber, 'Nomor KK')
-  const payload = familyCardPayload(card)
+  const kkNumber = assertSixteenDigits(card.kkNumber, 'Nomor KK')
+  const payload = familyCardPayload({ ...card, kkNumber })
   const request = id
     ? supabase.from('family_cards').update(payload).eq('id', id)
     : supabase.from('family_cards').insert(payload)
@@ -681,7 +749,10 @@ export async function updateFamilyCard(card: Omit<FamilyCard, 'id'>, id: string)
     rt_id: card.rtId,
     updated_at: new Date().toISOString(),
   })
-  const { error: residentsError } = await supabase.from('residents').update(residentScope).eq('family_card_id', id)
+  const { error: residentsError } = await supabase
+    .from('residents')
+    .update(residentScope)
+    .eq('family_card_id', id)
   assertNoError(residentsError)
   const { error: headError } = await supabase
     .from('residents')
@@ -697,7 +768,12 @@ export async function deleteFamilyCard(id: string) {
   assertNoError(error)
 }
 
-export async function listResidents(profile: UserProfile | null, rtId?: string, rwId?: string, search?: string) {
+export async function listResidents(
+  profile: UserProfile | null,
+  rtId?: string,
+  rwId?: string,
+  search?: string,
+) {
   let request = supabase.from('residents').select('*').order('full_name')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
@@ -717,9 +793,9 @@ export async function listResidents(profile: UserProfile | null, rtId?: string, 
 }
 
 export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) {
-  assertSixteenDigits(resident.kkNumber, 'Nomor KK')
-  assertSixteenDigits(resident.nik, 'NIK')
-  const payload = residentPayload(resident)
+  const kkNumber = assertSixteenDigits(resident.kkNumber, 'Nomor KK')
+  const nik = assertSixteenDigits(resident.nik, 'NIK')
+  const payload = residentPayload({ ...resident, kkNumber, nik })
   const request = id
     ? supabase.from('residents').update(payload).eq('id', id)
     : supabase.from('residents').insert(payload)
@@ -734,7 +810,10 @@ export async function deleteResident(id: string) {
 }
 
 export async function listMutations(profile: UserProfile | null, rtId?: string, rwId?: string) {
-  let request = supabase.from('resident_mutations').select('*').order('mutation_date', { ascending: false })
+  let request = supabase
+    .from('resident_mutations')
+    .select('*')
+    .order('mutation_date', { ascending: false })
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
   }

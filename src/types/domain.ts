@@ -14,6 +14,30 @@ export type PermissionCode =
 export type Gender = 'L' | 'P'
 export type ResidentStatus = 'tetap' | 'sementara'
 export type MutationType = 'lahir' | 'mati' | 'pindah' | 'datang'
+export type Citizenship = 'WNI' | 'WNA'
+export type FamilyRelationship =
+  | 'Kepala Keluarga'
+  | 'Suami'
+  | 'Istri'
+  | 'Ayah'
+  | 'Ibu'
+  | 'Anak'
+  | 'Mertua'
+  | 'Cucu'
+  | 'Lainnya'
+
+export const citizenshipOptions: Citizenship[] = ['WNI', 'WNA']
+export const familyRelationshipOptions: FamilyRelationship[] = [
+  'Kepala Keluarga',
+  'Suami',
+  'Istri',
+  'Ayah',
+  'Ibu',
+  'Anak',
+  'Mertua',
+  'Cucu',
+  'Lainnya',
+]
 
 export interface Role {
   id: string
