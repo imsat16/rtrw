@@ -398,9 +398,9 @@ onMounted(async () => {
               <th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{
                 sortIndicator('memberCount') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
                 sortIndicator('address') }}</button></th>
               <th>Aksi</th>

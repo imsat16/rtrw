@@ -257,7 +257,7 @@ onMounted(async () => {
           <thead>
             <tr>
               <th><button class="sort-button" type="button" @click="toggleSort('nik')">NIK {{ sortIndicator('nik')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('kkNumber')">No. KK {{
                 sortIndicator('kkNumber') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('fullName')">Nama {{
@@ -265,7 +265,7 @@ onMounted(async () => {
               <th><button class="sort-button" type="button" @click="toggleSort('familyRelationship')">Hubungan {{
                 sortIndicator('familyRelationship') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('gender')">JK {{ sortIndicator('gender')
-                  }}</button></th>
+              }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('birthDate')">TTL {{
                 sortIndicator('birthDate') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('residentStatus')">Status {{
@@ -415,7 +415,9 @@ onMounted(async () => {
         <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
             v-model="mutationForm.mutationDate" required type="date" /></div>
         <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
-        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' : 'Catat LAMPID' }}</button>
+        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' :
+          'Catat
+          LAMPID' }}</button>
         <button class="secondary-button" type="button" @click="mutationFormOpen = false"
           :disabled="mutationSaving">Batal</button>
       </form>

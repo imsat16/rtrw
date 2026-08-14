@@ -10,7 +10,9 @@ describe('family rules', () => {
   it('normalizes KK and NIK numbers with punctuation and spaces', () => {
     expect(normalizeKkNumber(' 1234.5678-9012/3456 ')).toBe('1234567890123456')
     expect(normalizeNumericId(' 3321.4403-4455.6612 ')).toBe('3321.4403-4455.6612')
-    expect(stripNumericSeparators(normalizeNumericId(' 3321.4403-4455.6612 '))).toBe('3321440344556612')
+    expect(stripNumericSeparators(normalizeNumericId(' 3321.4403-4455.6612 '))).toBe(
+      '3321440344556612',
+    )
     expect(normalizeKkNumber('1234567890123456')).toBe('1234567890123456')
   })
 
