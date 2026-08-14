@@ -415,9 +415,7 @@ onMounted(async () => {
         <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
             v-model="mutationForm.mutationDate" required type="date" /></div>
         <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
-        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' :
-          'Catat
-          LAMPID' }}</button>
+        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' : 'Catat LAMPID' }}</button>
         <button class="secondary-button" type="button" @click="mutationFormOpen = false"
           :disabled="mutationSaving">Batal</button>
       </form>

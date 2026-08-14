@@ -7,10 +7,11 @@ import { useClientTable } from '@/composables/useClientTable'
 import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCards, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
 import { familyRelationshipOptions, citizenshipOptions } from '@/types/domain'
-import { applyFamilyParentAutoFill, normalizeKkNumber, normalizeNumericId } from '@/utils/familyRules'
+import { applyFamilyParentAutoFill, normalizeKkNumber, normalizeNumericId, stripNumericSeparators } from '@/utils/familyRules'
 import type { FamilyCard, Gender, Region, Resident, ResidentStatus } from '@/types/domain'
 
 type ResidentDraft = {
+  id: string
   nik: string
   fullName: string
   gender: Gender
@@ -61,6 +62,7 @@ const memberForms = ref<ResidentDraft[]>([])
 
 function createResidentDraft(overrides: Partial<ResidentDraft> = {}): ResidentDraft {
   return {
+    id: crypto.randomUUID(),
     nik: '',
     fullName: '',
     gender: 'L',
@@ -182,7 +184,7 @@ function removeMemberForm(index: number) {
 
 function validateUniqueNiks() {
   const nikList = [headForm.nik, ...memberForms.value.map((item) => item.nik)]
-    .map((nik) => normalizeNumericId(nik, 16))
+    .map((nik) => stripNumericSeparators(normalizeNumericId(nik, 16)))
     .filter(Boolean)
   if (nikList.length !== new Set(nikList).size) {
     throw new Error('NIK kepala keluarga dan anggota harus unik.')
@@ -586,7 +588,7 @@ onMounted(async () => {
           <div v-if="memberForms.length === 0" class="muted family-form-note">Belum ada anggota tambahan. Anda bisa
             menambah setelah data KK tersimpan.</div>
 
-          <div v-for="(member, index) in memberForms" :key="`member-${index}`" class="member-card">
+          <div v-for="(member, index) in memberForms" :key="member.id" class="member-card">
             <div class="member-card-header">
               <strong>Anggota {{ index + 1 }}</strong>
               <button class="danger-button action-button" type="button" @click="removeMemberForm(index)">

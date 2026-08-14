@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { normalizeKkNumber, normalizeNumericId } from '@/utils/familyRules'
+import { normalizeKkNumber, stripNumericSeparators } from '@/utils/familyRules'
 import type {
   Citizenship,
   FamilyCard,
@@ -125,7 +125,7 @@ function assertNoError(error: unknown) {
 }
 
 function assertSixteenDigits(value: string, label: string) {
-  const normalized = normalizeNumericId(value, 16)
+  const normalized = stripNumericSeparators(value)
   if (!/^\d{16}$/.test(normalized)) throw new Error(`${label} harus terdiri dari 16 digit angka.`)
   return normalized
 }

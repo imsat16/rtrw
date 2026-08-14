@@ -11,14 +11,35 @@ export const FAMILY_RELATIONSHIP_OPTIONS = [
 ]
 
 export function normalizeNumericId(value: string, maxDigits = 16) {
-  const digits = String(value ?? '')
-    .replace(/[\s.-]+/g, '')
-    .replace(/[^\d]/g, '')
-  return maxDigits > 0 ? digits.slice(0, maxDigits) : digits
+  const raw = String(value ?? '')
+  const allowed = raw.replace(/[^\d.-]/g, '')
+  let digits = 0
+  const chars: string[] = []
+
+  for (const char of allowed) {
+    if (/\d/.test(char)) {
+      if (maxDigits > 0 && digits >= maxDigits) continue
+      digits += 1
+      chars.push(char)
+      continue
+    }
+
+    if (char === '.' || char === '-') {
+      chars.push(char)
+    }
+  }
+
+  return chars.join('')
 }
 
 export function normalizeKkNumber(value: string) {
-  return normalizeNumericId(value, 16)
+  return String(value ?? '')
+    .replace(/[\s.-]+/g, '')
+    .replace(/[^\d]/g, '')
+}
+
+export function stripNumericSeparators(value: string) {
+  return String(value ?? '').replace(/[.-]/g, '')
 }
 
 export function isChildRelationship(value?: string) {
