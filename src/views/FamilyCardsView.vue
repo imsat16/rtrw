@@ -398,9 +398,9 @@ onMounted(async () => {
               <th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{
                 sortIndicator('memberCount') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw')
-              }}</button></th>
+                  }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt')
-              }}</button></th>
+                  }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
                 sortIndicator('address') }}</button></th>
               <th>Aksi</th>
@@ -470,8 +470,8 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label for="kkNumber">Nomor KK</label>
-          <input id="kkNumber" v-model="form.kkNumber" required
-            placeholder="contoh: 1234.5678-9012.3456" title="Nomor KK bisa menggunakan tanda titik atau tanda hubung"
+          <input id="kkNumber" v-model="form.kkNumber" required placeholder="contoh: 1234.5678-9012.3456"
+            title="Nomor KK bisa menggunakan tanda titik atau tanda hubung"
             @input="form.kkNumber = normalizeKkNumber(form.kkNumber)" />
         </div>
         <div v-if="editingId" class="field">

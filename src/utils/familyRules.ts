@@ -11,7 +11,9 @@ export const FAMILY_RELATIONSHIP_OPTIONS = [
 ]
 
 export function normalizeFreeTextId(value: string) {
-  return String(value ?? '').replace(/\s+/g, ' ').trim()
+  return String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export function normalizeNumericId(value: string) {
