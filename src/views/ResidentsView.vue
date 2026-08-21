@@ -9,7 +9,7 @@ import { useClientTable } from '@/composables/useClientTable'
 import { deleteResident, listFamilyCards, listMutations, listRegions, listResidents, saveMutation, saveResident } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
 import { citizenshipOptions, familyRelationshipOptions } from '@/types/domain'
-import { normalizeNumericId } from '@/utils/familyRules'
+import { normalizeFreeTextId } from '@/utils/familyRules'
 import type { FamilyCard, Gender, MutationType, Region, Resident, ResidentMutation, ResidentStatus } from '@/types/domain'
 
 const auth = useAuthStore()
@@ -336,9 +336,8 @@ onMounted(async () => {
             required />
         </div>
         <div class="field"><label for="nik">NIK</label><input id="nik" v-model="residentForm.nik" required
-            inputmode="numeric" pattern="[0-9]{16}" minlength="16" maxlength="16"
-            title="NIK harus terdiri dari 16 digit angka"
-            @input="residentForm.nik = normalizeNumericId(residentForm.nik, 16)" /></div>
+            title="NIK dapat diisi dengan teks bebas"
+            @input="residentForm.nik = normalizeFreeTextId(residentForm.nik)" /></div>
         <div class="field"><label for="fullName">Nama lengkap</label><input id="fullName"
             v-model="residentForm.fullName" required /></div>
         <div class="field"><label for="gender">Jenis kelamin</label><select id="gender" v-model="residentForm.gender">
@@ -415,9 +414,7 @@ onMounted(async () => {
         <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
             v-model="mutationForm.mutationDate" required type="date" /></div>
         <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
-        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' :
-          'Catat
-          LAMPID' }}</button>
+        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' : 'Catat LAMPID' }}</button>
         <button class="secondary-button" type="button" @click="mutationFormOpen = false"
           :disabled="mutationSaving">Batal</button>
       </form>

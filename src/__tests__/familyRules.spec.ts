@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyFamilyParentAutoFill,
+  normalizeFreeTextId,
   normalizeKkNumber,
-  normalizeNumericId,
   stripNumericSeparators,
 } from '@/utils/familyRules'
 
 describe('family rules', () => {
-  it('normalizes KK and NIK numbers with punctuation and spaces', () => {
-    expect(normalizeKkNumber(' 1234.5678-9012/3456 ')).toBe('1234567890123456')
-    expect(normalizeNumericId(' 3321.4403-4455.6612 ')).toBe('3321.4403-4455.6612')
-    expect(stripNumericSeparators(normalizeNumericId(' 3321.4403-4455.6612 '))).toBe(
+  it('keeps free-text identifiers while trimming whitespace and preserving separators', () => {
+    expect(normalizeKkNumber(' 1234.5678-9012/3456 ')).toBe('1234.5678-9012/3456')
+    expect(normalizeFreeTextId(' 3321.4403-4455.6612 ')).toBe('3321.4403-4455.6612')
+    expect(stripNumericSeparators(normalizeFreeTextId(' 3321.4403-4455.6612 '))).toBe(
       '3321440344556612',
     )
     expect(normalizeKkNumber('1234567890123456')).toBe('1234567890123456')

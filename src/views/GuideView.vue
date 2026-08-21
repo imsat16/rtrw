@@ -121,7 +121,7 @@ function printGuide() {
               <li>Klik <strong>Tambah KK</strong>, kemudian isi nomor KK, data kepala keluarga, alamat, dan wilayah.</li>
               <li>Saat disimpan, kepala keluarga otomatis dibuat sebagai data warga pertama dalam KK tersebut.</li>
               <li>Gunakan <strong>Lihat</strong> untuk membuka jumlah dan accordion detail anggota keluarga.</li>
-            </ol><div class="guide-tip"><strong>Pemeriksaan</strong>Pastikan nomor KK dan NIK berjumlah 16 digit serta tidak tertukar.</div></div>
+            </ol><div class="guide-tip"><strong>Pemeriksaan</strong>Pastikan nomor KK dan NIK diisi dengan benar dan tidak tertukar.</div></div>
           </section>
 
           <section id="warga" class="guide-section">

@@ -7,7 +7,7 @@ import { useClientTable } from '@/composables/useClientTable'
 import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCards, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { useAuthStore } from '@/stores/auth'
 import { familyRelationshipOptions, citizenshipOptions } from '@/types/domain'
-import { applyFamilyParentAutoFill, normalizeKkNumber, normalizeNumericId, stripNumericSeparators } from '@/utils/familyRules'
+import { applyFamilyParentAutoFill, normalizeFreeTextId, normalizeKkNumber, stripNumericSeparators } from '@/utils/familyRules'
 import type { FamilyCard, Gender, Region, Resident, ResidentStatus } from '@/types/domain'
 
 type ResidentDraft = {
@@ -184,7 +184,7 @@ function removeMemberForm(index: number) {
 
 function validateUniqueNiks() {
   const nikList = [headForm.nik, ...memberForms.value.map((item) => item.nik)]
-    .map((nik) => stripNumericSeparators(normalizeNumericId(nik, 16)))
+    .map((nik) => stripNumericSeparators(normalizeFreeTextId(nik)))
     .filter(Boolean)
   if (nikList.length !== new Set(nikList).size) {
     throw new Error('NIK kepala keluarga dan anggota harus unik.')
@@ -441,7 +441,7 @@ onMounted(async () => {
       <form class="form-grid modal-form" @submit.prevent="applyFilters">
         <div class="field">
           <label for="kkSearch">Cari nomor KK</label>
-          <input id="kkSearch" v-model="filterDraft.search" inputmode="numeric" placeholder="Masukkan nomor KK" />
+          <input id="kkSearch" v-model="filterDraft.search" placeholder="Masukkan nomor KK" />
         </div>
         <div class="field">
           <label for="filterRw">RW</label>
@@ -470,9 +470,9 @@ onMounted(async () => {
         </div>
         <div class="field">
           <label for="kkNumber">Nomor KK</label>
-          <input id="kkNumber" v-model="form.kkNumber" required inputmode="numeric"
+          <input id="kkNumber" v-model="form.kkNumber" required
             placeholder="contoh: 1234.5678-9012.3456" title="Nomor KK bisa menggunakan tanda titik atau tanda hubung"
-            @input="form.kkNumber = normalizeNumericId(form.kkNumber, 16)" />
+            @input="form.kkNumber = normalizeKkNumber(form.kkNumber)" />
         </div>
         <div v-if="editingId" class="field">
           <label for="headName">Nama kepala keluarga</label>
@@ -508,9 +508,8 @@ onMounted(async () => {
           </div>
           <div class="field">
             <label for="headNik">NIK kepala keluarga</label>
-            <input id="headNik" v-model="headForm.nik" required inputmode="numeric" pattern="[0-9]{16}" minlength="16"
-              maxlength="16" title="NIK harus terdiri dari 16 digit angka"
-              @input="headForm.nik = normalizeNumericId(headForm.nik, 16)" />
+            <input id="headNik" v-model="headForm.nik" required title="NIK dapat diisi dengan teks bebas"
+              @input="headForm.nik = normalizeFreeTextId(headForm.nik)" />
           </div>
           <div class="field">
             <label for="headFullName">Nama lengkap</label>
@@ -597,9 +596,8 @@ onMounted(async () => {
             </div>
             <div class="field">
               <label :for="`memberNik-${index}`">NIK</label>
-              <input :id="`memberNik-${index}`" v-model="member.nik" required inputmode="numeric" pattern="[0-9]{16}"
-                minlength="16" maxlength="16" title="NIK harus terdiri dari 16 digit angka"
-                @input="member.nik = normalizeNumericId(member.nik, 16)" />
+              <input :id="`memberNik-${index}`" v-model="member.nik" required title="NIK dapat diisi dengan teks bebas"
+                @input="member.nik = normalizeFreeTextId(member.nik)" />
             </div>
             <div class="field">
               <label :for="`memberName-${index}`">Nama lengkap</label>

@@ -10,32 +10,16 @@ export const FAMILY_RELATIONSHIP_OPTIONS = [
   'Lainnya',
 ]
 
-export function normalizeNumericId(value: string, maxDigits = 16) {
-  const raw = String(value ?? '')
-  const allowed = raw.replace(/[^\d.-]/g, '')
-  let digits = 0
-  const chars: string[] = []
+export function normalizeFreeTextId(value: string) {
+  return String(value ?? '').replace(/\s+/g, ' ').trim()
+}
 
-  for (const char of allowed) {
-    if (/\d/.test(char)) {
-      if (maxDigits > 0 && digits >= maxDigits) continue
-      digits += 1
-      chars.push(char)
-      continue
-    }
-
-    if (char === '.' || char === '-') {
-      chars.push(char)
-    }
-  }
-
-  return chars.join('')
+export function normalizeNumericId(value: string) {
+  return normalizeFreeTextId(value)
 }
 
 export function normalizeKkNumber(value: string) {
-  return String(value ?? '')
-    .replace(/[\s.-]+/g, '')
-    .replace(/[^\d]/g, '')
+  return normalizeFreeTextId(value)
 }
 
 export function stripNumericSeparators(value: string) {

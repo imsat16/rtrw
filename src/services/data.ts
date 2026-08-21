@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase'
-import { normalizeKkNumber, stripNumericSeparators } from '@/utils/familyRules'
+import { normalizeFreeTextId, normalizeKkNumber } from '@/utils/familyRules'
 import type {
   Citizenship,
   FamilyCard,
@@ -124,9 +124,9 @@ function assertNoError(error: unknown) {
   }
 }
 
-function assertSixteenDigits(value: string, label: string) {
-  const normalized = stripNumericSeparators(value)
-  if (!/^\d{16}$/.test(normalized)) throw new Error(`${label} harus terdiri dari 16 digit angka.`)
+function assertRequiredText(value: string, label: string) {
+  const normalized = normalizeFreeTextId(value)
+  if (!normalized) throw new Error(`${label} wajib diisi.`)
   return normalized
 }
 
@@ -701,8 +701,8 @@ export type FamilyHeadInput = {
 }
 
 export async function createFamilyCardWithHead(input: FamilyHeadInput) {
-  assertSixteenDigits(input.kkNumber, 'Nomor KK')
-  assertSixteenDigits(input.headNik, 'NIK kepala keluarga')
+  assertRequiredText(input.kkNumber, 'Nomor KK')
+  assertRequiredText(input.headNik, 'NIK kepala keluarga')
   const { data, error } = await supabase.rpc('create_family_card_with_head', {
     p_kk_number: input.kkNumber,
     p_head_nik: input.headNik,
@@ -726,7 +726,7 @@ export async function createFamilyCardWithHead(input: FamilyHeadInput) {
 }
 
 export async function saveFamilyCard(card: Omit<FamilyCard, 'id'>, id?: string) {
-  const kkNumber = assertSixteenDigits(card.kkNumber, 'Nomor KK')
+  const kkNumber = assertRequiredText(card.kkNumber, 'Nomor KK')
   const payload = familyCardPayload({ ...card, kkNumber })
   const request = id
     ? supabase.from('family_cards').update(payload).eq('id', id)
@@ -793,8 +793,8 @@ export async function listResidents(
 }
 
 export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) {
-  const kkNumber = assertSixteenDigits(resident.kkNumber, 'Nomor KK')
-  const nik = assertSixteenDigits(resident.nik, 'NIK')
+  const kkNumber = assertRequiredText(resident.kkNumber, 'Nomor KK')
+  const nik = assertRequiredText(resident.nik, 'NIK')
   const payload = residentPayload({ ...resident, kkNumber, nik })
   const request = id
     ? supabase.from('residents').update(payload).eq('id', id)
