@@ -411,6 +411,7 @@ onMounted(async () => {
             <option value="mati">Meninggal</option>
             <option value="pindah">Pindah</option>
             <option value="datang">Datang</option>
+            <option value="hamil">Ibu Hamil</option>
           </select></div>
         <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
             v-model="mutationForm.mutationDate" required type="date" /></div>

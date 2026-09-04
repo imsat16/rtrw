@@ -60,6 +60,7 @@ export function calculateStats(
     mati: mutations.filter((item) => item.mutationType === 'mati').length,
     pindah: mutations.filter((item) => item.mutationType === 'pindah').length,
     datang: mutations.filter((item) => item.mutationType === 'datang').length,
+    hamil: mutations.filter((item) => item.mutationType === 'hamil').length,
   }
 }
 
@@ -113,7 +114,7 @@ function formatGender(gender: Resident['gender']) {
 }
 
 function formatMutationType(type: MutationType) {
-  return ({ lahir: 'Lahir', mati: 'Meninggal', pindah: 'Pindah', datang: 'Datang' })[type]
+  return ({ lahir: 'Lahir', mati: 'Meninggal', pindah: 'Pindah', datang: 'Datang', hamil: 'Ibu Hamil' })[type]
 }
 
 export function buildReportPreview(options: ReportOptions): ReportPreview {

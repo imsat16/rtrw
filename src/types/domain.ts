@@ -13,7 +13,7 @@ export type PermissionCode =
   | 'rbac.manage'
 export type Gender = 'L' | 'P'
 export type ResidentStatus = 'tetap' | 'sementara'
-export type MutationType = 'lahir' | 'mati' | 'pindah' | 'datang'
+export type MutationType = 'lahir' | 'mati' | 'pindah' | 'datang' | 'hamil'
 export type Citizenship = 'WNI' | 'WNA'
 export type FamilyRelationship =
   | 'Kepala Keluarga'
@@ -181,4 +181,5 @@ export interface DashboardStats {
   mati: number
   pindah: number
   datang: number
+  hamil: number
 }

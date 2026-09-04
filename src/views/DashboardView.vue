@@ -25,6 +25,7 @@ const colors = {
   amber: '#f59e0b',
   red: '#ef4444',
   purple: '#8b5cf6',
+  pink: '#ec4899',
   gray: '#94a3b8',
 }
 
@@ -184,6 +185,7 @@ const mutationTypes = [
   { key: 'datang', label: 'Datang', color: colors.blue },
   { key: 'pindah', label: 'Pindah', color: colors.amber },
   { key: 'mati', label: 'Meninggal', color: colors.red },
+  { key: 'hamil', label: 'Ibu Hamil', color: colors.pink },
 ] as const
 
 const mutationChart = computed<ChartData<'line'>>(() => ({
@@ -357,13 +359,13 @@ onMounted(async () => {
       </article>
 
       <article class="chart-card">
-        <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, dan datang sesuai wilayah akun.</p></div></header>
+        <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, datang, dan ibu hamil sesuai wilayah akun.</p></div></header>
         <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir" />
         <div class="chart-summary-table">
           <table>
-            <thead><tr><th>Bulan</th><th>Lahir</th><th>Datang</th><th>Pindah</th><th>Meninggal</th><th>Total</th></tr></thead>
-            <tbody><tr v-for="row in mutationSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.lahir }}</td><td>{{ row.datang }}</td><td>{{ row.pindah }}</td><td>{{ row.mati }}</td><td>{{ row.total }}</td></tr></tbody>
-            <tfoot><tr><th>Total</th><th>{{ stats.lahir }}</th><th>{{ stats.datang }}</th><th>{{ stats.pindah }}</th><th>{{ stats.mati }}</th><th>{{ stats.lahir + stats.datang + stats.pindah + stats.mati }}</th></tr></tfoot>
+            <thead><tr><th>Bulan</th><th>Lahir</th><th>Datang</th><th>Pindah</th><th>Meninggal</th><th>Ibu Hamil</th><th>Total</th></tr></thead>
+            <tbody><tr v-for="row in mutationSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.lahir }}</td><td>{{ row.datang }}</td><td>{{ row.pindah }}</td><td>{{ row.mati }}</td><td>{{ row.hamil }}</td><td>{{ row.total }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.lahir }}</th><th>{{ stats.datang }}</th><th>{{ stats.pindah }}</th><th>{{ stats.mati }}</th><th>{{ stats.hamil }}</th><th>{{ stats.lahir + stats.datang + stats.pindah + stats.mati + stats.hamil }}</th></tr></tfoot>
           </table>
         </div>
       </article>

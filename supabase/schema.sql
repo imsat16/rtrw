@@ -301,7 +301,7 @@ create table if not exists public.resident_mutations (
   resident_id uuid references public.residents(id) on delete set null,
   resident_name text not null,
   gender text not null check (gender in ('L', 'P')),
-  mutation_type text not null check (mutation_type in ('lahir', 'mati', 'pindah', 'datang')),
+  mutation_type text not null check (mutation_type in ('lahir', 'mati', 'pindah', 'datang', 'hamil')),
   mutation_date date not null,
   note text,
   resident_status text not null check (resident_status in ('tetap', 'sementara')),
@@ -313,6 +313,17 @@ create table if not exists public.resident_mutations (
   rt_id uuid references public.master_rts(id) on delete restrict,
   created_at timestamptz not null default now()
 );
+
+-- Menambahkan kategori 'hamil' ke resident_mutations.mutation_type pada database yang sudah ada.
+do $$
+begin
+  if exists (select 1 from pg_constraint where conname = 'resident_mutations_mutation_type_check') then
+    alter table public.resident_mutations drop constraint resident_mutations_mutation_type_check;
+  end if;
+  alter table public.resident_mutations
+    add constraint resident_mutations_mutation_type_check
+    check (mutation_type in ('lahir', 'mati', 'pindah', 'datang', 'hamil'));
+end $$;
 
 -- Membuat KK dan kepala keluarga secara atomik. SECURITY INVOKER memastikan
 -- permission dan scope tetap diperiksa oleh RLS milik pengguna pemanggil.
