@@ -5,8 +5,8 @@ import type { ChartData, ChartOptions, ChartType } from 'chart.js'
 
 const props = defineProps<{
   type: ChartType
-  data: ChartData<any>
-  options?: ChartOptions<any>
+  data: ChartData<ChartType>
+  options?: ChartOptions<ChartType>
   label: string
 }>()
 

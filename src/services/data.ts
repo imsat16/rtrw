@@ -1,9 +1,7 @@
 import { supabase } from '@/lib/supabase'
-import { normalizeFreeTextId, normalizeKkNumber } from '@/utils/familyRules'
+import { normalizeFreeTextId } from '@/utils/familyRules'
 import type {
-  Citizenship,
   FamilyCard,
-  FamilyRelationship,
   Permission,
   PermissionCode,
   Region,

@@ -149,9 +149,7 @@ function printGuide() {
             <div>
               <h2>Mengelola Kartu Keluarga</h2>
               <ol>
-                <li>Buka <strong>Kartu Keluarga</strong>. {{ activeRole === 'ketua_rw' ? 'Gunakan filter RW/RT untuk
-                  memilih
-                  wilayah kerja.' : 'Daftar otomatis dibatasi ke RT Anda.' }}</li>
+                <li>Buka <strong>Kartu Keluarga</strong>. {{ activeRole === 'ketua_rw' ? 'Gunakan filter RW/RT untuk memilih wilayah kerja.' : 'Daftar otomatis dibatasi ke RT Anda.' }}</li>
                 <li>Klik <strong>Tambah KK</strong>, kemudian isi nomor KK, data kepala keluarga, alamat, dan wilayah.
                 </li>
                 <li>Saat disimpan, kepala keluarga otomatis dibuat sebagai data warga pertama dalam KK tersebut.</li>
@@ -207,9 +205,7 @@ function printGuide() {
                 <li>Periksa dashboard, data KK, warga, dan LAMPID sebelum membuat laporan.</li>
                 <li>Buka <strong>Export Laporan</strong>.</li>
                 <li>Pilih jenis laporan dan periode yang dibutuhkan.</li>
-                <li>{{ activeRole === 'ketua_rw' ? 'Pilih RT bila laporan hanya untuk satu RT, atau gunakan cakupan RW
-                  untuk rekap
-                keseluruhan.' : 'Pastikan cakupan laporan menunjukkan RT Anda.' }}</li>
+                <li>{{ activeRole === 'ketua_rw' ? 'Pilih RT bila laporan hanya untuk satu RT, atau gunakan cakupan RW untuk rekap keseluruhan.' : 'Pastikan cakupan laporan menunjukkan RT Anda.' }}</li>
                 <li>Unduh file dan periksa kembali angka total sebelum dikirim.</li>
               </ol>
             </div>

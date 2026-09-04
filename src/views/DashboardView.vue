@@ -29,7 +29,6 @@ const colors = {
 }
 
 const stats = computed(() => calculateStats(cards.value, residents.value, mutations.value))
-const isRtScope = computed(() => ['ketua_rt', 'staff_rt'].includes(auth.profile?.role ?? ''))
 const isRwScope = computed(() => ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? ''))
 const rwOptions = computed(() => {
   const options = regions.value.filter((region) => region.type === 'rw')
