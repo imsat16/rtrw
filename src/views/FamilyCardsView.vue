@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
@@ -229,15 +229,15 @@ function resetFilters() {
 
 async function submit() {
   if (!auth.hasPermission('families.manage')) return
-  for (const relationship of relationshipOptions.value) {
-    await ensureFamilyRelationship(relationship)
-  }
-  const rt = regions.value.find((item) => item.id === form.rtId && item.type === 'rt')
-  if (!rt) return
   saving.value = true
   message.value = ''
   let createdCardId = ''
   try {
+    for (const relationship of relationshipOptions.value) {
+      await ensureFamilyRelationship(relationship)
+    }
+    const rt = regions.value.find((item) => item.id === form.rtId && item.type === 'rt')
+    if (!rt) return
     const normalizedKkNumber = normalizeKkNumber(form.kkNumber)
     const payload = {
       kkNumber: normalizedKkNumber,
@@ -361,12 +361,20 @@ watch(() => form.rwId, () => {
   if (!formRtOptions.value.some((item) => item.id === form.rtId)) form.rtId = ''
 })
 
+function warnBeforeUnload(event: BeforeUnloadEvent) {
+  if (!saving.value) return
+  event.preventDefault()
+  event.returnValue = ''
+}
+
 onMounted(async () => {
+  window.addEventListener('beforeunload', warnBeforeUnload)
   regions.value = await listRegions(auth.profile)
   await loadRelationshipOptions()
   initializeScope()
   await loadCards()
 })
+onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 </script>
 
 <template>
@@ -463,7 +471,7 @@ onMounted(async () => {
     </AppModal>
 
     <AppModal :open="formOpen" :title="editingId ? 'Edit Kartu Keluarga' : 'Tambah Kartu Keluarga'" size="large"
-      @close="formOpen = false">
+      :loading="saving" @close="formOpen = false">
       <form class="form-grid modal-form" @submit.prevent="submit">
         <div class="family-form-section">
           <h3>Data Kartu Keluarga</h3>
@@ -676,7 +684,7 @@ onMounted(async () => {
         <button class="primary-button" type="submit" :disabled="saving">
           {{ saving ? 'Menyimpan...' : (editingId ? 'Simpan Perubahan' : 'Tambah KK') }}
         </button>
-        <button class="secondary-button" type="button" @click="formOpen = false">Batal</button>
+        <button class="secondary-button" type="button" :disabled="saving" @click="formOpen = false">Batal</button>
       </form>
     </AppModal>
     <AppModal :open="Boolean(detailTarget)" title="Detail Kartu Keluarga" size="large" @close="closeDetail">
@@ -719,11 +727,12 @@ onMounted(async () => {
         </div>
       </details>
     </AppModal>
-    <AppModal :open="Boolean(deleteTarget)" title="Hapus Kartu Keluarga" size="small" @close="deleteTarget = null">
+    <AppModal :open="Boolean(deleteTarget)" title="Hapus Kartu Keluarga" size="small" :loading="saving"
+      @close="deleteTarget = null">
       <p>Hapus KK <strong>{{ deleteTarget?.kkNumber }}</strong>? Seluruh data warga dalam KK ini juga akan dihapus.</p>
-      <footer class="modal-actions"><button class="secondary-button" type="button"
+      <footer class="modal-actions"><button class="secondary-button" type="button" :disabled="saving"
           @click="deleteTarget = null">Batal</button><button class="danger-button" type="button" :disabled="saving"
-          @click="confirmDelete">Hapus</button></footer>
+          @click="confirmDelete">{{ saving ? 'Menghapus...' : 'Hapus' }}</button></footer>
     </AppModal>
   </section>
 </template>
