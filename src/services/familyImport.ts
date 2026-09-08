@@ -3,14 +3,16 @@ import { saveAs } from 'file-saver'
 import {
   deleteFamilyCard,
   ensureFamilyRelationship,
+  listFamilyImportIdentities,
   saveFamilyCard,
   saveResident,
+  updateFamilyCard,
 } from '@/services/data'
 import {
   applyFamilyParentAutoFill,
+  familyImportIdentityKey,
   normalizeFreeTextId,
   normalizeKkNumber,
-  stripNumericSeparators,
 } from '@/utils/familyRules'
 import { citizenshipOptions } from '@/types/domain'
 import type { Citizenship, FamilyCard, Gender, Region, Resident, ResidentStatus, UserProfile } from '@/types/domain'
@@ -53,6 +55,13 @@ type ColumnKey = (typeof COLUMNS)[number]['key']
 
 function colIndex(key: ColumnKey) {
   return COLUMNS.findIndex((column) => column.key === key) + 1
+}
+
+function normalizeLookupKey(value: string) {
+  return String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
 }
 
 function regionLabel(region: Region, regions: Region[]) {
@@ -367,14 +376,18 @@ export function buildFamilyGroups(
   const errors: FamilyImportError[] = []
   const rwRegions = regions.filter((item) => item.type === 'rw')
   const rtRegions = regions.filter((item) => item.type === 'rt')
-  const rwByLabel = new Map(rwRegions.map((item) => [regionLabel(item, regions), item]))
-  const rtByLabel = new Map(rtRegions.map((item) => [regionLabel(item, regions), item]))
+  const rwByLabel = new Map(
+    rwRegions.map((item) => [normalizeLookupKey(regionLabel(item, regions)), item]),
+  )
+  const rtByLabel = new Map(
+    rtRegions.map((item) => [normalizeLookupKey(regionLabel(item, regions)), item]),
+  )
   const { rw: scopedRw, rt: scopedRt } = scopedRegions(profile, regions)
 
   const duplicateNikRows = new Set<number>()
   const nikRowMap = new Map<string, number[]>()
   rows.forEach((row) => {
-    const key = stripNumericSeparators(row.nik)
+    const key = familyImportIdentityKey(row.nik)
     if (!key) return
     const list = nikRowMap.get(key) ?? []
     list.push(row.row)
@@ -392,14 +405,16 @@ export function buildFamilyGroups(
       errors.push({ row: row.row, message: 'No. KK wajib diisi.' })
       return
     }
-    const list = byKk.get(row.kkNumber) ?? []
+    const key = familyImportIdentityKey(row.kkNumber)
+    const list = byKk.get(key) ?? []
     list.push(row)
-    byKk.set(row.kkNumber, list)
+    byKk.set(key, list)
   })
 
   const groups: FamilyGroupInput[] = []
 
-  byKk.forEach((familyRows, kkNumber) => {
+  byKk.forEach((familyRows) => {
+    const kkNumber = familyRows[0]!.kkNumber
     if (familyRows.some((row) => duplicateNikRows.has(row.row))) return
 
     const headRows = familyRows.filter(
@@ -420,9 +435,11 @@ export function buildFamilyGroups(
     if (!head.rwLabel && !scopedRw) { errors.push({ row: head.row, message: 'RW wajib diisi pada baris Kepala Keluarga.' }); return }
     if (!head.rtLabel && !scopedRt) { errors.push({ row: head.row, message: 'RT wajib diisi pada baris Kepala Keluarga.' }); return }
 
-    const rw = head.rwLabel ? rwByLabel.get(head.rwLabel) : scopedRw
+    const rwKey = head.rwLabel ? normalizeLookupKey(head.rwLabel) : ''
+    const rtKey = head.rtLabel ? normalizeLookupKey(head.rtLabel) : ''
+    const rw = head.rwLabel ? rwByLabel.get(rwKey) : scopedRw
     if (!rw) { errors.push({ row: head.row, message: `RW "${head.rwLabel}" tidak ditemukan pada sheet Master Data.` }); return }
-    const rt = head.rtLabel ? rtByLabel.get(head.rtLabel) : scopedRt
+    const rt = head.rtLabel ? rtByLabel.get(rtKey) : scopedRt
     if (!rt) { errors.push({ row: head.row, message: `RT "${head.rtLabel}" tidak ditemukan pada sheet Master Data.` }); return }
     if (rt.rwId !== rw.id) { errors.push({ row: head.row, message: `RT "${head.rtLabel || regionLabel(rt, regions)}" bukan bagian dari RW "${head.rwLabel || regionLabel(rw, regions)}".` }); return }
 
@@ -505,6 +522,7 @@ export interface FamilyImportResult {
   totalFamilies: number
   successFamilies: number
   failedFamilies: number
+  changedFamilies?: number
   errors: FamilyImportError[]
 }
 
@@ -512,26 +530,68 @@ export async function runFamilyImport(
   groups: FamilyGroupInput[],
   onProgress?: (processed: number, total: number) => void,
 ): Promise<FamilyImportResult> {
-  const relationshipLabels = new Set<string>()
-  groups.forEach((group) => {
-    relationshipLabels.add(group.head.familyRelationship)
-    group.members.forEach((member) => relationshipLabels.add(member.familyRelationship))
-  })
-  for (const label of relationshipLabels) {
-    await ensureFamilyRelationship(label)
-  }
-
   const errors: FamilyImportError[] = []
   let successFamilies = 0
+  let changedFamilies = 0
+  if (!groups.length) return { totalFamilies: 0, successFamilies: 0, failedFamilies: 0, errors }
+  // Fail closed: never start writing if the duplicate check cannot be completed.
+  const existing = await listFamilyImportIdentities()
+  const seenKks = new Set<string>()
+  const seenNiks = new Set<string>()
+  const relationships = new Set<string>()
 
   for (let index = 0; index < groups.length; index++) {
     const group = groups[index]!
     let createdCardId = ''
+    let updatingExisting = false
     try {
-      createdCardId = await saveFamilyCard(group.card)
-      await saveResident({ ...group.head, familyCardId: createdCardId })
-      for (const member of group.members) {
-        await saveResident({ ...member, familyCardId: createdCardId })
+      const kkKey = familyImportIdentityKey(group.kkNumber)
+      const residents = [group.head, ...group.members]
+      const matches = existing.cards.filter(card => familyImportIdentityKey(card.kk_number) === kkKey)
+      if (matches.length > 1) throw new Error('No. KK cocok dengan beberapa data lama. Periksa duplikasi sebelum impor.')
+      const card = matches[0]
+      if (seenKks.has(kkKey)) throw new Error('No. KK berulang dalam impor. KK dilewati.')
+      const familyNiks = residents.map(resident => familyImportIdentityKey(resident.nik))
+      if (new Set(familyNiks).size !== familyNiks.length) throw new Error('NIK berulang pada anggota KK. Seluruh KK dilewati.')
+      const residentMatches = residents.map(resident => {
+        const key = familyImportIdentityKey(resident.nik)
+        if (seenNiks.has(key)) throw new Error(`NIK "${resident.nik}" berulang dalam impor.`)
+        const matches = existing.residents.filter(saved => familyImportIdentityKey(saved.nik || '') === key)
+        if (matches.length > 1) throw new Error(`NIK "${resident.nik}" cocok dengan beberapa data lama.`)
+        const saved = matches[0]
+        if (saved && (!card || saved.family_card_id !== card.id)) {
+          throw new Error(`NIK "${resident.nik}" terdaftar di KK lain. Seluruh KK dilewati; warga tidak dipindahkan otomatis.`)
+        }
+        return saved
+      })
+      // An omitted former head must not leave two heads after an upsert.
+      if (card) {
+        const heads = existing.residents.filter(saved => saved.family_card_id === card.id && normalizeLookupKey(saved.family_relationship || '') === 'kepala keluarga')
+        if (heads.some(head => !familyNiks.includes(familyImportIdentityKey(head.nik || '')))) {
+          throw new Error('Kepala keluarga lama tidak ada dalam file. Sertakan NIK kepala keluarga lama beserta hubungan barunya untuk mengganti kepala keluarga.')
+        }
+      }
+      for (const resident of residents) {
+        if (relationships.has(resident.familyRelationship)) continue
+        await ensureFamilyRelationship(resident.familyRelationship)
+        relationships.add(resident.familyRelationship)
+      }
+      seenKks.add(kkKey)
+      familyNiks.forEach(nik => seenNiks.add(nik))
+      const kkNumber = card?.kk_number || group.kkNumber
+      let cardId: string
+      changedFamilies++
+      if (card) {
+        updatingExisting = true
+        cardId = await updateFamilyCard({ ...group.card, kkNumber }, card.id)
+      } else {
+        createdCardId = await saveFamilyCard(group.card)
+        cardId = createdCardId
+      }
+      for (let i = 0; i < residents.length; i++) {
+        const resident = residents[i]!
+        const saved = residentMatches[i]
+        await saveResident({ ...resident, kkNumber, nik: saved?.nik || resident.nik, familyCardId: cardId }, saved?.id)
       }
       successFamilies++
     } catch (error) {
@@ -539,12 +599,12 @@ export async function runFamilyImport(
         try {
           await deleteFamilyCard(createdCardId)
         } catch {
-          // Best effort rollback jika salah satu data warga gagal disimpan.
+          errors.push({ row: group.headRow, message: `KK ${group.kkNumber}: pembersihan data impor gagal. Periksa KK ini sebelum mencoba impor ulang.` })
         }
       }
       errors.push({
         row: group.headRow,
-        message: `KK ${group.kkNumber}: ${error instanceof Error ? error.message : 'Gagal disimpan.'}`,
+        message: `KK ${group.kkNumber}: ${error instanceof Error ? error.message : 'Gagal disimpan.'}${updatingExisting ? ' Sebagian perubahan mungkin sudah tersimpan. Periksa data atau ulangi impor untuk menyelesaikan pembaruan.' : ''}`,
       })
     }
     onProgress?.(index + 1, groups.length)
@@ -554,6 +614,7 @@ export async function runFamilyImport(
     totalFamilies: groups.length,
     successFamilies,
     failedFamilies: groups.length - successFamilies,
+    changedFamilies,
     errors,
   }
 }

@@ -5,14 +5,8 @@ import AppModal from '@/components/AppModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
 import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCards, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
-import {
-  buildFamilyGroups,
-  downloadFamilyImportTemplate,
-  parseFamilyImportWorkbook,
-  readWorkbookFromFile,
-  runFamilyImport,
-} from '@/services/familyImport'
-import type { FamilyImportError } from '@/services/familyImport'
+import { downloadFamilyImportTemplate } from '@/services/familyImport'
+import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
 import { familyRelationshipOptions, citizenshipOptions } from '@/types/domain'
 import { applyFamilyParentAutoFill, normalizeFreeTextId, normalizeKkNumber, stripNumericSeparators } from '@/utils/familyRules'
@@ -38,6 +32,7 @@ type ResidentDraft = {
 }
 
 const auth = useAuthStore()
+const importJob = useFamilyImportStore()
 const cards = ref<FamilyCard[]>([])
 const regions = ref<Region[]>([])
 const loading = ref(false)
@@ -52,15 +47,7 @@ const detailMembers = ref<Resident[]>([])
 const detailLoading = ref(false)
 const deleteTarget = ref<FamilyCard | null>(null)
 const bulkImportOpen = ref(false)
-const bulkImportBusy = ref(false)
 const bulkImportFile = ref<File | null>(null)
-const bulkImportProgress = reactive({ processed: 0, total: 0 })
-const bulkImportResult = ref<{
-  totalFamilies: number
-  successFamilies: number
-  failedFamilies: number
-  errors: FamilyImportError[]
-} | null>(null)
 const filters = reactive({ rwId: '', rtId: '', search: '' })
 const filterDraft = reactive({ rwId: '', rtId: '', search: '' })
 const form = reactive({
@@ -373,15 +360,16 @@ async function confirmDelete() {
 }
 
 function openBulkImport() {
+  if (importJob.busy) {
+    importJob.visible = true
+    importJob.minimized = false
+    return
+  }
   bulkImportFile.value = null
-  bulkImportResult.value = null
-  bulkImportProgress.processed = 0
-  bulkImportProgress.total = 0
   bulkImportOpen.value = true
 }
 
 function closeBulkImport() {
-  if (bulkImportBusy.value) return
   bulkImportOpen.value = false
 }
 
@@ -390,46 +378,26 @@ async function downloadBulkTemplate() {
 }
 
 function onBulkFileChange(event: Event) {
-  const input = event.target as HTMLInputElement
-  bulkImportFile.value = input.files?.[0] ?? null
-  bulkImportResult.value = null
+  bulkImportFile.value = (event.target as HTMLInputElement).files?.[0] ?? null
 }
 
-async function processBulkImport() {
-  if (!bulkImportFile.value || !auth.hasPermission('families.manage')) return
-  bulkImportBusy.value = true
-  bulkImportResult.value = null
-  bulkImportProgress.processed = 0
-  bulkImportProgress.total = 0
-  try {
-    const workbook = await readWorkbookFromFile(bulkImportFile.value)
-    const { rows, parseErrors } = parseFamilyImportWorkbook(workbook)
-    const { groups, errors: groupErrors, totalKkCount } = buildFamilyGroups(rows, regions.value, auth.profile)
-    bulkImportProgress.total = groups.length
-    const runResult = groups.length
-      ? await runFamilyImport(groups, (processed, total) => {
-          bulkImportProgress.processed = processed
-          bulkImportProgress.total = total
-        })
-      : { successFamilies: 0, failedFamilies: 0, errors: [] }
-    bulkImportResult.value = {
-      totalFamilies: totalKkCount,
-      successFamilies: runResult.successFamilies,
-      failedFamilies: totalKkCount - runResult.successFamilies,
-      errors: [...parseErrors, ...groupErrors, ...runResult.errors].sort((a, b) => a.row - b.row),
-    }
-    if (runResult.successFamilies > 0) await loadCards()
-  } catch (error) {
-    bulkImportResult.value = {
-      totalFamilies: 0,
-      successFamilies: 0,
-      failedFamilies: 0,
-      errors: [{ row: 0, message: error instanceof Error ? error.message : 'Gagal memproses file.' }],
-    }
-  } finally {
-    bulkImportBusy.value = false
-  }
+function processBulkImport() {
+  if (!bulkImportFile.value || importJob.busy || !auth.hasPermission('families.manage')) return
+  const file = bulkImportFile.value
+  bulkImportOpen.value = false
+  bulkImportFile.value = null
+  void importJob.start(file, [...regions.value], auth.profile ? { ...auth.profile } : null)
 }
+
+watch(() => importJob.completionVersion, async () => {
+  if (!importJob.result?.successFamilies && !importJob.result?.changedFamilies) return
+  try {
+    await loadCards()
+  } catch {
+    message.value = 'Impor selesai, tetapi daftar KK gagal dimuat ulang. Silakan muat ulang halaman.'
+    messageError.value = true
+  }
+})
 
 watch(() => filterDraft.rwId, () => {
   if (!filterRtOptions.value.some((item) => item.id === filterDraft.rtId)) filterDraft.rtId = ''
@@ -439,7 +407,7 @@ watch(() => form.rwId, () => {
 })
 
 function warnBeforeUnload(event: BeforeUnloadEvent) {
-  if (!saving.value && !bulkImportBusy.value) return
+  if (!saving.value) return
   event.preventDefault()
   event.returnValue = ''
 }
@@ -815,12 +783,13 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
           @click="deleteTarget = null">Batal</button><button class="danger-button" type="button" :disabled="saving"
           @click="confirmDelete">{{ saving ? 'Menghapus...' : 'Hapus' }}</button></footer>
     </AppModal>
-    <AppModal :open="bulkImportOpen" title="Import Kartu Keluarga dari Excel" size="large" :loading="bulkImportBusy"
+    <AppModal :open="bulkImportOpen" title="Import Kartu Keluarga dari Excel" size="large"
       @close="closeBulkImport">
       <div class="bulk-import">
         <p class="muted">Unduh template Excel terlebih dahulu, isi data pada sheet "Data KK & Warga" mengikuti
           petunjuk pada sheet "Petunjuk" (RW, RT, Hubungan Keluarga, dan pilihan lain dapat dipilih dari dropdown
           yang bersumber dari sheet "Master Data"), lalu unggah kembali file yang sudah diisi.</p>
+        <p class="muted">No. KK yang sama akan diperbarui. Warga dicocokkan berdasarkan NIK: data yang sama diperbarui, anggota baru ditambahkan. Anggota yang tidak ada dalam file tetap disimpan. NIK dari KK lain akan ditolak.</p>
         <div class="bulk-import-actions">
           <button class="secondary-button action-button" type="button" @click="downloadBulkTemplate">
             <AppIcon class="action-icon" icon="mdi:download-outline" /><span class="action-label">Unduh Template
@@ -829,27 +798,13 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
         </div>
         <div class="field">
           <label for="bulkImportFile">File Excel (.xlsx)</label>
-          <input id="bulkImportFile" type="file" accept=".xlsx" :disabled="bulkImportBusy" @change="onBulkFileChange" />
-        </div>
-        <p v-if="bulkImportBusy" class="muted">Memproses {{ bulkImportProgress.processed }} dari {{
-          bulkImportProgress.total }} KK...</p>
-        <div v-if="bulkImportResult" class="bulk-import-result">
-          <p :class="bulkImportResult.failedFamilies > 0 ? 'alert' : 'success'">
-            {{ bulkImportResult.successFamilies }} dari {{ bulkImportResult.totalFamilies || bulkImportResult.successFamilies }} KK berhasil diimpor.
-            <template v-if="bulkImportResult.failedFamilies > 0">{{ bulkImportResult.failedFamilies }} KK gagal atau
-              dilewati, lihat rincian di bawah.</template>
-          </p>
-          <ul v-if="bulkImportResult.errors.length" class="bulk-import-errors">
-            <li v-for="(error, index) in bulkImportResult.errors" :key="index">
-              <template v-if="error.row">Baris {{ error.row }}: </template>{{ error.message }}
-            </li>
-          </ul>
+          <input id="bulkImportFile" type="file" accept=".xlsx" :disabled="importJob.busy" @change="onBulkFileChange" />
         </div>
       </div>
       <footer class="modal-actions">
-        <button class="secondary-button" type="button" :disabled="bulkImportBusy" @click="closeBulkImport">Tutup</button>
-        <button class="primary-button" type="button" :disabled="!bulkImportFile || bulkImportBusy"
-          @click="processBulkImport">{{ bulkImportBusy ? 'Memproses...' : 'Proses Import' }}</button>
+        <button class="secondary-button" type="button" :disabled="importJob.busy" @click="closeBulkImport">Tutup</button>
+        <button class="primary-button" type="button" :disabled="!bulkImportFile || importJob.busy"
+          @click="processBulkImport">Proses Import</button>
       </footer>
     </AppModal>
   </section>

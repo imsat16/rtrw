@@ -635,7 +635,7 @@ export async function ensureFamilyRelationship(label: string) {
   const { data: existing, error: existingError } = await supabase
     .from('master_family_relationships')
     .select('id')
-    .eq('label', value)
+    .ilike('label', value)
     .maybeSingle()
   assertNoError(existingError)
   if (existing) return value
@@ -677,6 +677,36 @@ export async function listResidentsByFamilyCard(familyCardId: string) {
     .order('full_name')
   assertNoError(error)
   return (data as ResidentRow[]).map(mapResident)
+}
+
+export interface FamilyImportIdentityRow {
+  id: string
+  kk_number: string
+  nik?: string
+  family_card_id?: string
+  family_relationship?: string
+}
+
+// Read all identities visible through RLS, beyond the API's row limit.
+export async function listFamilyImportIdentities() {
+  async function read(table: 'family_cards' | 'residents') {
+    const values: FamilyImportIdentityRow[] = []
+    let after = ''
+    while (true) {
+      const columns = table === 'family_cards' ? 'id, kk_number' : 'id, kk_number, nik, family_card_id, family_relationship'
+      let request = supabase.from(table).select(columns).order('id').limit(500)
+      if (after) request = request.gt('id', after)
+      const { data, error } = await request
+      assertNoError(error)
+      const rows = data as unknown as FamilyImportIdentityRow[] | null
+      if (!rows?.length) break
+      values.push(...rows)
+      after = rows[rows.length - 1]!.id
+    }
+    return values
+  }
+  const [cards, residents] = await Promise.all([read('family_cards'), read('residents')])
+  return { cards, residents }
 }
 
 export type FamilyHeadInput = {

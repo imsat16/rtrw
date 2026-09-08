@@ -28,6 +28,12 @@ export function stripNumericSeparators(value: string) {
   return String(value ?? '').replace(/[.-]/g, '')
 }
 
+// Comparison only: preserve the original identifiers in stored records.
+export function familyImportIdentityKey(value: string) {
+  const text = normalizeFreeTextId(value)
+  return /^[\d\s./-]+$/.test(text) ? text.replace(/\D/g, '') : text.toUpperCase()
+}
+
 export function isChildRelationship(value?: string) {
   return ['anak', 'anak kandung', 'anak angkat'].includes(
     String(value ?? '')

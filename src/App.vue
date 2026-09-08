@@ -2,10 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
+import FamilyImportProgress from '@/components/FamilyImportProgress.vue'
+import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
 import type { PermissionCode } from '@/types/domain'
 
 const auth = useAuthStore()
+const importJob = useFamilyImportStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -54,6 +57,8 @@ function toggleMobileDrawer() {
 }
 
 async function handleLogout() {
+  if (importJob.busy) return
+  importJob.dismiss()
   mobileDrawerOpen.value = false
   await auth.logout()
   await router.push({ name: 'login' })
@@ -79,7 +84,7 @@ async function handleLogout() {
         </template>
       </nav>
 
-      <button class="secondary-button full-width" type="button" @click="handleLogout">Keluar</button>
+      <button class="secondary-button full-width" type="button" :disabled="importJob.busy" :title="importJob.busy ? 'Tunggu impor selesai sebelum keluar' : undefined" @click="handleLogout">Keluar</button>
     </aside>
 
     <div
@@ -108,7 +113,7 @@ async function handleLogout() {
           </template>
         </nav>
 
-        <button class="secondary-button full-width" type="button" @click="handleLogout">Keluar</button>
+        <button class="secondary-button full-width" type="button" :disabled="importJob.busy" :title="importJob.busy ? 'Tunggu impor selesai sebelum keluar' : undefined" @click="handleLogout">Keluar</button>
       </aside>
     </div>
 
@@ -139,6 +144,7 @@ async function handleLogout() {
       </header>
 
       <RouterView />
+      <FamilyImportProgress />
     </main>
   </div>
 </template>

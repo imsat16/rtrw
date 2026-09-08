@@ -7,12 +7,14 @@ import ItemDetailModal from '@/components/ItemDetailModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
 import { useClientTable } from '@/composables/useClientTable'
 import { deleteResident, listFamilyCards, listMutations, listRegions, listResidents, saveMutation, saveResident } from '@/services/data'
+import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
 import { citizenshipOptions, familyRelationshipOptions } from '@/types/domain'
 import { normalizeFreeTextId } from '@/utils/familyRules'
 import type { FamilyCard, Gender, MutationType, Region, Resident, ResidentMutation, ResidentStatus } from '@/types/domain'
 
 const auth = useAuthStore()
+const importJob = useFamilyImportStore()
 const regions = ref<Region[]>([])
 const cards = ref<FamilyCard[]>([])
 const residents = ref<Resident[]>([])
@@ -221,6 +223,16 @@ async function submitMutation() {
 
 watch(() => filterDraft.rwId, () => {
   if (!rtOptions.value.some((item) => item.id === filterDraft.rtId)) filterDraft.rtId = ''
+})
+
+watch(() => importJob.completionVersion, async () => {
+  if (!importJob.result?.successFamilies && !importJob.result?.changedFamilies) return
+  try {
+    await loadData()
+  } catch {
+    message.value = 'Impor selesai, tetapi daftar warga gagal dimuat ulang. Silakan muat ulang halaman.'
+    messageError.value = true
+  }
 })
 
 onMounted(async () => {
