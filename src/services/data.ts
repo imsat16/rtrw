@@ -128,6 +128,21 @@ function assertRequiredText(value: string, label: string) {
   return normalized
 }
 
+// Statistics and client-side tables need every matching row, not just the
+// server's default response limit. Advance by the actual returned page size.
+async function readAllRows<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: unknown; error: unknown }>,
+): Promise<T[]> {
+  const rows: T[] = []
+  while (true) {
+    const { data, error } = await fetchPage(rows.length, rows.length + 499)
+    assertNoError(error)
+    const page = (data ?? []) as T[]
+    if (!page.length) return rows
+    rows.push(...page)
+  }
+}
+
 function clean<T extends Record<string, unknown>>(value: T) {
   return Object.fromEntries(
     Object.entries(value).filter(([, item]) => item !== undefined && item !== ''),
@@ -641,7 +656,7 @@ export async function ensureFamilyRelationship(label: string) {
   if (existing) return value
   const { error } = await supabase.from('master_family_relationships').insert({
     label: value,
-    sort_order: Date.now(),
+    sort_order: 0,
   })
   assertNoError(error)
   return value
@@ -653,7 +668,7 @@ export async function listFamilyCards(
   rwId?: string,
   search?: string,
 ) {
-  let request = supabase.from('family_cards').select('*, residents(nik)').order('head_name')
+  let request = supabase.from('family_cards').select('*, residents(nik)').order('head_name').order('id')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
   }
@@ -663,20 +678,20 @@ export async function listFamilyCards(
   if (rtId) request = request.eq('rt_id', rtId)
   if (rwId) request = request.eq('rw_id', rwId)
   if (search?.trim()) request = request.ilike('kk_number', `%${search.trim()}%`)
-  const { data, error } = await request
-  assertNoError(error)
-  return (data as FamilyCardRow[]).map(mapFamilyCard)
+  const data = await readAllRows<FamilyCardRow>((from, to) => request.range(from, to))
+  return data.map(mapFamilyCard)
 }
 
 export async function listResidentsByFamilyCard(familyCardId: string) {
-  const { data, error } = await supabase
+  const request = supabase
     .from('residents')
     .select('*')
     .eq('family_card_id', familyCardId)
     .order('family_relationship')
     .order('full_name')
-  assertNoError(error)
-  return (data as ResidentRow[]).map(mapResident)
+    .order('id')
+  const data = await readAllRows<ResidentRow>((from, to) => request.range(from, to))
+  return data.map(mapResident)
 }
 
 export interface FamilyImportIdentityRow {
@@ -693,7 +708,10 @@ export async function listFamilyImportIdentities() {
     const values: FamilyImportIdentityRow[] = []
     let after = ''
     while (true) {
-      const columns = table === 'family_cards' ? 'id, kk_number' : 'id, kk_number, nik, family_card_id, family_relationship'
+      const columns =
+        table === 'family_cards'
+          ? 'id, kk_number'
+          : 'id, kk_number, nik, family_card_id, family_relationship'
       let request = supabase.from(table).select(columns).order('id').limit(500)
       if (after) request = request.gt('id', after)
       const { data, error } = await request
@@ -802,7 +820,7 @@ export async function listResidents(
   rwId?: string,
   search?: string,
 ) {
-  let request = supabase.from('residents').select('*').order('full_name')
+  let request = supabase.from('residents').select('*').order('full_name').order('id')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
   }
@@ -815,9 +833,8 @@ export async function listResidents(
     const term = search.trim().replace(/,/g, '')
     request = request.or(`nik.ilike.%${term}%,full_name.ilike.%${term}%,kk_number.ilike.%${term}%`)
   }
-  const { data, error } = await request
-  assertNoError(error)
-  return (data as ResidentRow[]).map(mapResident)
+  const data = await readAllRows<ResidentRow>((from, to) => request.range(from, to))
+  return data.map(mapResident)
 }
 
 export async function saveResident(resident: Omit<Resident, 'id'>, id?: string) {
@@ -842,6 +859,7 @@ export async function listMutations(profile: UserProfile | null, rtId?: string, 
     .from('resident_mutations')
     .select('*')
     .order('mutation_date', { ascending: false })
+    .order('id')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
   }
@@ -850,9 +868,8 @@ export async function listMutations(profile: UserProfile | null, rtId?: string, 
   }
   if (rtId) request = request.eq('rt_id', rtId)
   if (rwId) request = request.eq('rw_id', rwId)
-  const { data, error } = await request
-  assertNoError(error)
-  return (data as MutationRow[]).map(mapMutation)
+  const data = await readAllRows<MutationRow>((from, to) => request.range(from, to))
+  return data.map(mapMutation)
 }
 
 export async function saveMutation(mutation: Omit<ResidentMutation, 'id'>) {

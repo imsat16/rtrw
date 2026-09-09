@@ -15,7 +15,15 @@ import {
   normalizeKkNumber,
 } from '@/utils/familyRules'
 import { citizenshipOptions } from '@/types/domain'
-import type { Citizenship, FamilyCard, Gender, Region, Resident, ResidentStatus, UserProfile } from '@/types/domain'
+import type {
+  Citizenship,
+  FamilyCard,
+  Gender,
+  Region,
+  Resident,
+  ResidentStatus,
+  UserProfile,
+} from '@/types/domain'
 
 const SHEET_PETUNJUK = 'Petunjuk'
 const SHEET_MASTER = 'Master Data'
@@ -74,9 +82,10 @@ function rangeEnd(count: number) {
 }
 
 function scopedRegions(profile: UserProfile | null | undefined, regions: Region[]) {
-  const rw = profile && profile.role !== 'superadmin' && profile.rwId
-    ? regions.find((item) => item.type === 'rw' && item.id === profile.rwId)
-    : undefined
+  const rw =
+    profile && profile.role !== 'superadmin' && profile.rwId
+      ? regions.find((item) => item.type === 'rw' && item.id === profile.rwId)
+      : undefined
   const rt = profile?.rtId
     ? regions.find((item) => item.type === 'rt' && item.id === profile.rtId)
     : undefined
@@ -256,7 +265,9 @@ function cellText(cell: ExcelJS.Cell): string {
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return formatDate(value)
   if (typeof value === 'object' && 'richText' in value) {
-    return (value as { richText: Array<{ text: string }> }).richText.map((part) => part.text).join('')
+    return (value as { richText: Array<{ text: string }> }).richText
+      .map((part) => part.text)
+      .join('')
   }
   if (typeof value === 'object' && 'result' in value) {
     const result = (value as { result: unknown }).result
@@ -289,7 +300,9 @@ export function parseFamilyImportWorkbook(workbook: ExcelJS.Workbook): {
 } {
   const sheet = workbook.getWorksheet(SHEET_DATA)
   if (!sheet) {
-    throw new Error(`Sheet "${SHEET_DATA}" tidak ditemukan. Gunakan template import yang disediakan.`)
+    throw new Error(
+      `Sheet "${SHEET_DATA}" tidak ditemukan. Gunakan template import yang disediakan.`,
+    )
   }
 
   const rows: ParsedRow[] = []
@@ -301,10 +314,14 @@ export function parseFamilyImportWorkbook(workbook: ExcelJS.Workbook): {
     const nik = get('nik')
     const fullName = get('fullName')
     if (!kkNumber && !nik && !fullName) return
-    if (normalizeKkNumber(kkNumber) === EXAMPLE_KK_NUMBER || normalizeFreeTextId(nik) === EXAMPLE_NIK) {
+    if (
+      normalizeKkNumber(kkNumber) === EXAMPLE_KK_NUMBER ||
+      normalizeFreeTextId(nik) === EXAMPLE_NIK
+    ) {
       parseErrors.push({
         row: rowNumber,
-        message: 'Baris ini masih berisi data contoh dari template. Hapus atau ganti dengan data asli sebelum mengunggah.',
+        message:
+          'Baris ini masih berisi data contoh dari template. Hapus atau ganti dengan data asli sebelum mengunggah.',
       })
       return
     }
@@ -396,7 +413,10 @@ export function buildFamilyGroups(
   nikRowMap.forEach((rowNumbers, nik) => {
     if (rowNumbers.length <= 1) return
     rowNumbers.forEach((row) => duplicateNikRows.add(row))
-    errors.push({ row: rowNumbers[0]!, message: `NIK "${nik}" muncul lebih dari sekali pada file (baris ${rowNumbers.join(', ')}).` })
+    errors.push({
+      row: rowNumbers[0]!,
+      message: `NIK "${nik}" muncul lebih dari sekali pada file (baris ${rowNumbers.join(', ')}).`,
+    })
   })
 
   const byKk = new Map<string, ParsedRow[]>()
@@ -421,27 +441,60 @@ export function buildFamilyGroups(
       (row) => normalizeFreeTextId(row.familyRelationship).toLowerCase() === 'kepala keluarga',
     )
     if (headRows.length === 0) {
-      errors.push({ row: familyRows[0]!.row, message: `KK ${kkNumber}: tidak ada baris dengan Hubungan Keluarga "Kepala Keluarga".` })
+      errors.push({
+        row: familyRows[0]!.row,
+        message: `KK ${kkNumber}: tidak ada baris dengan Hubungan Keluarga "Kepala Keluarga".`,
+      })
       return
     }
     if (headRows.length > 1) {
-      errors.push({ row: headRows[1]!.row, message: `KK ${kkNumber}: ditemukan lebih dari satu baris "Kepala Keluarga".` })
+      errors.push({
+        row: headRows[1]!.row,
+        message: `KK ${kkNumber}: ditemukan lebih dari satu baris "Kepala Keluarga".`,
+      })
       return
     }
     const head = headRows[0]!
 
-    if (!head.address) { errors.push({ row: head.row, message: 'Alamat KK wajib diisi pada baris Kepala Keluarga.' }); return }
+    if (!head.address) {
+      errors.push({ row: head.row, message: 'Alamat KK wajib diisi pada baris Kepala Keluarga.' })
+      return
+    }
 
-    if (!head.rwLabel && !scopedRw) { errors.push({ row: head.row, message: 'RW wajib diisi pada baris Kepala Keluarga.' }); return }
-    if (!head.rtLabel && !scopedRt) { errors.push({ row: head.row, message: 'RT wajib diisi pada baris Kepala Keluarga.' }); return }
+    if (!head.rwLabel && !scopedRw) {
+      errors.push({ row: head.row, message: 'RW wajib diisi pada baris Kepala Keluarga.' })
+      return
+    }
+    if (!head.rtLabel && !scopedRt) {
+      errors.push({ row: head.row, message: 'RT wajib diisi pada baris Kepala Keluarga.' })
+      return
+    }
 
     const rwKey = head.rwLabel ? normalizeLookupKey(head.rwLabel) : ''
     const rtKey = head.rtLabel ? normalizeLookupKey(head.rtLabel) : ''
     const rw = head.rwLabel ? rwByLabel.get(rwKey) : scopedRw
-    if (!rw) { errors.push({ row: head.row, message: `RW "${head.rwLabel}" tidak ditemukan pada sheet Master Data.` }); return }
+    if (!rw) {
+      errors.push({
+        row: head.row,
+        message: `RW "${head.rwLabel}" tidak ditemukan pada sheet Master Data.`,
+      })
+      return
+    }
     const rt = head.rtLabel ? rtByLabel.get(rtKey) : scopedRt
-    if (!rt) { errors.push({ row: head.row, message: `RT "${head.rtLabel}" tidak ditemukan pada sheet Master Data.` }); return }
-    if (rt.rwId !== rw.id) { errors.push({ row: head.row, message: `RT "${head.rtLabel || regionLabel(rt, regions)}" bukan bagian dari RW "${head.rwLabel || regionLabel(rw, regions)}".` }); return }
+    if (!rt) {
+      errors.push({
+        row: head.row,
+        message: `RT "${head.rtLabel}" tidak ditemukan pada sheet Master Data.`,
+      })
+      return
+    }
+    if (rt.rwId !== rw.id) {
+      errors.push({
+        row: head.row,
+        message: `RT "${head.rtLabel || regionLabel(rt, regions)}" bukan bagian dari RW "${head.rwLabel || regionLabel(rw, regions)}".`,
+      })
+      return
+    }
 
     let hasRowError = false
     const residentsInput: Array<Omit<Resident, 'id' | 'familyCardId'> & { isHead: boolean }> = []
@@ -457,7 +510,10 @@ export function buildFamilyGroups(
       requireField(row.religion, 'Agama', row.row, errors)
       requireField(row.maritalStatus, 'Status Perkawinan', row.row, errors)
       requireField(row.familyRelationship, 'Hubungan Keluarga', row.row, errors)
-      if (errors.length > before) { hasRowError = true; continue }
+      if (errors.length > before) {
+        hasRowError = true
+        continue
+      }
 
       residentsInput.push({
         isHead,
@@ -471,7 +527,9 @@ export function buildFamilyGroups(
         education: row.education,
         occupation: row.occupation,
         maritalStatus: row.maritalStatus,
-        familyRelationship: isHead ? 'Kepala Keluarga' : normalizeFreeTextId(row.familyRelationship),
+        familyRelationship: isHead
+          ? 'Kepala Keluarga'
+          : normalizeFreeTextId(row.familyRelationship),
         citizenship: normalizeCitizenship(row.citizenship),
         fatherName: row.fatherName,
         motherName: row.motherName,
@@ -492,7 +550,10 @@ export function buildFamilyGroups(
     const headInput = residentsInput.find((item) => item.isHead)!
     const memberInputs = residentsInput.filter((item) => !item.isHead)
     const autoFilledMembers = memberInputs.map((member) =>
-      applyFamilyParentAutoFill(member, [headInput, ...memberInputs.filter((candidate) => candidate !== member)]),
+      applyFamilyParentAutoFill(member, [
+        headInput,
+        ...memberInputs.filter((candidate) => candidate !== member),
+      ]),
     )
 
     groups.push({
@@ -547,28 +608,43 @@ export async function runFamilyImport(
     try {
       const kkKey = familyImportIdentityKey(group.kkNumber)
       const residents = [group.head, ...group.members]
-      const matches = existing.cards.filter(card => familyImportIdentityKey(card.kk_number) === kkKey)
-      if (matches.length > 1) throw new Error('No. KK cocok dengan beberapa data lama. Periksa duplikasi sebelum impor.')
+      const matches = existing.cards.filter(
+        (card) => familyImportIdentityKey(card.kk_number) === kkKey,
+      )
+      if (matches.length > 1)
+        throw new Error('No. KK cocok dengan beberapa data lama. Periksa duplikasi sebelum impor.')
       const card = matches[0]
       if (seenKks.has(kkKey)) throw new Error('No. KK berulang dalam impor. KK dilewati.')
-      const familyNiks = residents.map(resident => familyImportIdentityKey(resident.nik))
-      if (new Set(familyNiks).size !== familyNiks.length) throw new Error('NIK berulang pada anggota KK. Seluruh KK dilewati.')
-      const residentMatches = residents.map(resident => {
+      const familyNiks = residents.map((resident) => familyImportIdentityKey(resident.nik))
+      if (new Set(familyNiks).size !== familyNiks.length)
+        throw new Error('NIK berulang pada anggota KK. Seluruh KK dilewati.')
+      const residentMatches = residents.map((resident) => {
         const key = familyImportIdentityKey(resident.nik)
         if (seenNiks.has(key)) throw new Error(`NIK "${resident.nik}" berulang dalam impor.`)
-        const matches = existing.residents.filter(saved => familyImportIdentityKey(saved.nik || '') === key)
-        if (matches.length > 1) throw new Error(`NIK "${resident.nik}" cocok dengan beberapa data lama.`)
+        const matches = existing.residents.filter(
+          (saved) => familyImportIdentityKey(saved.nik || '') === key,
+        )
+        if (matches.length > 1)
+          throw new Error(`NIK "${resident.nik}" cocok dengan beberapa data lama.`)
         const saved = matches[0]
         if (saved && (!card || saved.family_card_id !== card.id)) {
-          throw new Error(`NIK "${resident.nik}" terdaftar di KK lain. Seluruh KK dilewati; warga tidak dipindahkan otomatis.`)
+          throw new Error(
+            `NIK "${resident.nik}" terdaftar di KK lain. Seluruh KK dilewati; warga tidak dipindahkan otomatis.`,
+          )
         }
         return saved
       })
       // An omitted former head must not leave two heads after an upsert.
       if (card) {
-        const heads = existing.residents.filter(saved => saved.family_card_id === card.id && normalizeLookupKey(saved.family_relationship || '') === 'kepala keluarga')
-        if (heads.some(head => !familyNiks.includes(familyImportIdentityKey(head.nik || '')))) {
-          throw new Error('Kepala keluarga lama tidak ada dalam file. Sertakan NIK kepala keluarga lama beserta hubungan barunya untuk mengganti kepala keluarga.')
+        const heads = existing.residents.filter(
+          (saved) =>
+            saved.family_card_id === card.id &&
+            normalizeLookupKey(saved.family_relationship || '') === 'kepala keluarga',
+        )
+        if (heads.some((head) => !familyNiks.includes(familyImportIdentityKey(head.nik || '')))) {
+          throw new Error(
+            'Kepala keluarga lama tidak ada dalam file. Sertakan NIK kepala keluarga lama beserta hubungan barunya untuk mengganti kepala keluarga.',
+          )
         }
       }
       for (const resident of residents) {
@@ -577,7 +653,7 @@ export async function runFamilyImport(
         relationships.add(resident.familyRelationship)
       }
       seenKks.add(kkKey)
-      familyNiks.forEach(nik => seenNiks.add(nik))
+      familyNiks.forEach((nik) => seenNiks.add(nik))
       const kkNumber = card?.kk_number || group.kkNumber
       let cardId: string
       changedFamilies++
@@ -591,7 +667,10 @@ export async function runFamilyImport(
       for (let i = 0; i < residents.length; i++) {
         const resident = residents[i]!
         const saved = residentMatches[i]
-        await saveResident({ ...resident, kkNumber, nik: saved?.nik || resident.nik, familyCardId: cardId }, saved?.id)
+        await saveResident(
+          { ...resident, kkNumber, nik: saved?.nik || resident.nik, familyCardId: cardId },
+          saved?.id,
+        )
       }
       successFamilies++
     } catch (error) {
@@ -599,7 +678,10 @@ export async function runFamilyImport(
         try {
           await deleteFamilyCard(createdCardId)
         } catch {
-          errors.push({ row: group.headRow, message: `KK ${group.kkNumber}: pembersihan data impor gagal. Periksa KK ini sebelum mencoba impor ulang.` })
+          errors.push({
+            row: group.headRow,
+            message: `KK ${group.kkNumber}: pembersihan data impor gagal. Periksa KK ini sebelum mencoba impor ulang.`,
+          })
         }
       }
       errors.push({
