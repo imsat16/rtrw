@@ -31,9 +31,9 @@ const colors = {
 
 const stats = computed(() => calculateStats(cards.value, residents.value, mutations.value))
 const documentSummary = computed(() => [
-  { label: 'Akte', count: residents.value.filter((resident) => resident.hasBirthCertificate).length },
-  { label: 'KIA', count: residents.value.filter((resident) => resident.hasKia).length },
-  { label: 'KTP', count: residents.value.filter((resident) => resident.hasKtp).length },
+  { label: 'Akte', color: colors.purple, count: residents.value.filter((resident) => resident.hasBirthCertificate).length },
+  { label: 'KIA', color: colors.amber, count: residents.value.filter((resident) => resident.hasKia).length },
+  { label: 'KTP', color: colors.gray, count: residents.value.filter((resident) => resident.hasKtp).length },
 ])
 const isRwScope = computed(() => ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? ''))
 const rwOptions = computed(() => {
@@ -195,7 +195,7 @@ const mutationTypes = [
 
 const mutationChart = computed<ChartData<'line'>>(() => ({
   labels: monthKeys.value.map((month) => month.label),
-  datasets: mutationTypes.map((type) => ({
+  datasets: [...mutationTypes.map((type) => ({
     label: type.label,
     data: monthKeys.value.map((month) => mutations.value.filter(
       (mutation) => mutation.mutationType === type.key && mutation.mutationDate.startsWith(month.key),
@@ -205,15 +205,25 @@ const mutationChart = computed<ChartData<'line'>>(() => ({
     tension: 0.35,
     pointRadius: 4,
     pointHoverRadius: 6,
-  })),
+  })), ...documentSummary.value.map((item) => ({
+    label: item.label,
+    data: monthKeys.value.map((_, index) => index === monthKeys.value.length - 1 ? item.count : null),
+    borderColor: item.color,
+    backgroundColor: item.color,
+    pointStyle: 'rectRot' as const,
+    pointRadius: 6,
+    pointHoverRadius: 8,
+    showLine: false,
+  }))],
 }))
-const mutationSummaryRows = computed(() => monthKeys.value.map((month) => {
+const mutationSummaryRows = computed(() => monthKeys.value.map((month, index) => {
   const totals = Object.fromEntries(mutationTypes.map((type) => [
     type.key,
     mutations.value.filter((mutation) => mutation.mutationType === type.key && mutation.mutationDate.startsWith(month.key)).length,
   ])) as Record<(typeof mutationTypes)[number]['key'], number>
   return {
     label: month.label,
+    isCurrentMonth: index === monthKeys.value.length - 1,
     ...totals,
     total: Object.values(totals).reduce((sum, value) => sum + value, 0),
   }
@@ -365,19 +375,13 @@ onMounted(async () => {
 
       <article class="chart-card">
         <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, datang, dan ibu hamil sesuai wilayah akun.</p></div></header>
+        <p class="muted">Akte, KIA, dan KTP menunjukkan jumlah pemilik dokumen saat ini pada bulan berjalan. — berarti riwayat belum tersedia. Total LAMPID menghitung kejadian lahir, datang, pindah, meninggal, dan ibu hamil.</p>
+        <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir dan kepemilikan Akte, KIA, KTP saat ini" />
         <div class="chart-summary-table">
           <table>
-            <caption>Kepemilikan dokumen warga saat ini sesuai wilayah terpilih</caption>
-            <thead><tr><th v-for="item in documentSummary" :key="item.label">{{ item.label }}</th></tr></thead>
-            <tbody><tr><td v-for="item in documentSummary" :key="item.label">{{ item.count }}</td></tr></tbody>
-          </table>
-        </div>
-        <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir" />
-        <div class="chart-summary-table">
-          <table>
-            <thead><tr><th>Bulan</th><th>Lahir</th><th>Datang</th><th>Pindah</th><th>Meninggal</th><th>Ibu Hamil</th><th>Total</th></tr></thead>
-            <tbody><tr v-for="row in mutationSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.lahir }}</td><td>{{ row.datang }}</td><td>{{ row.pindah }}</td><td>{{ row.mati }}</td><td>{{ row.hamil }}</td><td>{{ row.total }}</td></tr></tbody>
-            <tfoot><tr><th>Total</th><th>{{ stats.lahir }}</th><th>{{ stats.datang }}</th><th>{{ stats.pindah }}</th><th>{{ stats.mati }}</th><th>{{ stats.hamil }}</th><th>{{ stats.lahir + stats.datang + stats.pindah + stats.mati + stats.hamil }}</th></tr></tfoot>
+            <thead><tr><th>Bulan</th><th>Lahir</th><th>Datang</th><th>Pindah</th><th>Meninggal</th><th>Ibu Hamil</th><th v-for="item in documentSummary" :key="item.label">{{ item.label }}</th><th>Total LAMPID</th></tr></thead>
+            <tbody><tr v-for="row in mutationSummaryRows" :key="row.label"><td>{{ row.label }}</td><td>{{ row.lahir }}</td><td>{{ row.datang }}</td><td>{{ row.pindah }}</td><td>{{ row.mati }}</td><td>{{ row.hamil }}</td><td v-for="item in documentSummary" :key="item.label">{{ row.isCurrentMonth ? item.count : '—' }}</td><td>{{ row.total }}</td></tr></tbody>
+            <tfoot><tr><th>Total</th><th>{{ stats.lahir }}</th><th>{{ stats.datang }}</th><th>{{ stats.pindah }}</th><th>{{ stats.mati }}</th><th>{{ stats.hamil }}</th><th v-for="item in documentSummary" :key="item.label">{{ item.count }}</th><th>{{ stats.lahir + stats.datang + stats.pindah + stats.mati + stats.hamil }}</th></tr></tfoot>
           </table>
         </div>
       </article>
