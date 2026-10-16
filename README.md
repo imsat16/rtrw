@@ -83,6 +83,12 @@ Seluruh primary key dan foreign key ID memakai UUID. Kode stabil seperti `ketua_
 - Pembuatan KK meminta data dasar kepala keluarga. Function database `create_family_card_with_head` menyimpan KK dan warga kepala keluarga dalam satu transaksi.
 - Halaman `Data Warga` terpisah untuk menambah anggota keluarga, mencari warga, dan mencatat mutasi LAMPID.
 
+Export **Data Sasaran PAAREDI** menghasilkan dua sheet: `Rincian Sasaran` (18 kolom) dan `Rekap RT` (12 kolom), dengan header bertingkat, total otomatis, dan pengaturan cetak A4 landscape. Seluruh sasaran diekspor tanpa batas 200 baris. Sasaran mencakup warga usia 0–24 tahun pada akhir bulan terpilih serta warga dengan catatan LAMPID hamil pada bulan tersebut. Warga yang sudah keluar/meninggal atau belum mulai tinggal pada akhir bulan tidak disertakan. Ini menggunakan data warga terkini, bukan rekonstruksi riwayat penduduk.
+
+Nama orang tua berasal dari nama ayah/ibu; Akte, KIA, dan KTP menggunakan nilai 1/0 dari status dokumen warga, lalu dijumlahkan per RT. Status dokumen adalah kondisi terkini. Kolom usia dalam kandungan dibiarkan kosong karena belum tersedia datanya. Terapkan `supabase/migrations/20261016000000_resident_documents.sql` sebelum menggunakan field dokumen di database yang sudah ada.
+
+Template import KK juga menyediakan kolom `Akte (Ya/Tidak)`, `KIA (Ya/Tidak)`, dan `KTP (Ya/Tidak)` di kolom U–W dengan dropdown Ya/Tidak. Import menerima Ya/Tidak, TRUE/FALSE, atau 1/0. Nilai lain ditolak dengan pesan baris/kolom. Kolom kosong atau template lama tanpa kolom tersebut mempertahankan status dokumen warga lama; warga baru mengikuti default database `false`. Isi Tidak/FALSE/0 untuk mengubah status menjadi tidak memiliki.
+
 ## Export Laporan
 
 Halaman Export memakai template XLSX di `public/dokumensementara/`:

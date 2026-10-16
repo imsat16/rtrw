@@ -34,6 +34,7 @@ const residentForm = reactive({
   religion: 'Islam', education: '', occupation: '', maritalStatus: 'Belum Kawin',
   familyRelationship: 'Anak', citizenship: 'WNI', fatherName: '', motherName: '',
   staySince: '', residentStatus: 'tetap' as ResidentStatus,
+  hasBirthCertificate: false, hasKia: false, hasKtp: false,
 })
 const mutationForm = reactive({ residentId: '', mutationType: 'lahir' as MutationType, mutationDate: '', note: '' })
 const residentSaving = ref(false)
@@ -72,6 +73,9 @@ const detailRows = computed(() => detailTarget.value ? [
   { label: 'Nama Ibu', value: detailTarget.value.motherName },
   { label: 'Status Penduduk', value: detailTarget.value.residentStatus },
   { label: 'Alamat', value: detailTarget.value.address },
+  { label: 'Akte', value: detailTarget.value.hasBirthCertificate ? 'Ya' : 'Tidak' },
+  { label: 'KIA', value: detailTarget.value.hasKia ? 'Ya' : 'Tidak' },
+  { label: 'KTP', value: detailTarget.value.hasKtp ? 'Ya' : 'Tidak' },
 ] : [])
 
 function regionOptionLabel(region: Region) {
@@ -93,6 +97,7 @@ function resetResidentForm() {
     religion: 'Islam', education: '', occupation: '', maritalStatus: 'Belum Kawin',
     familyRelationship: 'Anak', citizenship: 'WNI', fatherName: '', motherName: '',
     staySince: '', residentStatus: 'tetap' as ResidentStatus,
+    hasBirthCertificate: false, hasKia: false, hasKtp: false,
   })
 }
 
@@ -120,6 +125,9 @@ function editResident(item: Resident) {
     motherName: item.motherName,
     staySince: item.staySince ?? '',
     residentStatus: item.residentStatus,
+    hasBirthCertificate: item.hasBirthCertificate ?? false,
+    hasKia: item.hasKia ?? false,
+    hasKtp: item.hasKtp ?? false,
   })
   residentFormOpen.value = true
 }
@@ -168,6 +176,8 @@ async function submitResident() {
       address: card.address, staySince: residentForm.staySince, residentStatus: residentForm.residentStatus,
       provinceId: card.provinceId, cityId: card.cityId, districtId: card.districtId, villageId: card.villageId,
       rwId: card.rwId, rtId: card.rtId,
+      hasBirthCertificate: residentForm.hasBirthCertificate,
+      hasKia: residentForm.hasKia, hasKtp: residentForm.hasKtp,
     }, editingResidentId.value || undefined)
     message.value = editingResidentId.value ? 'Data warga berhasil diperbarui.' : 'Data warga berhasil ditambahkan.'
     messageError.value = false
@@ -392,6 +402,15 @@ onMounted(async () => {
             v-model="residentForm.residentStatus">
             <option value="tetap">Tetap</option>
             <option value="sementara">Sementara/Musiman</option>
+          </select></div>
+        <div class="field"><label for="hasBirthCertificate">Memiliki Akte</label><select id="hasBirthCertificate" v-model="residentForm.hasBirthCertificate">
+            <option :value="false">Tidak</option><option :value="true">Ya</option>
+          </select></div>
+        <div class="field"><label for="hasKia">Memiliki Kartu Identitas Anak (KIA)</label><select id="hasKia" v-model="residentForm.hasKia">
+            <option :value="false">Tidak</option><option :value="true">Ya</option>
+          </select></div>
+        <div class="field"><label for="hasKtp">Memiliki KTP</label><select id="hasKtp" v-model="residentForm.hasKtp">
+            <option :value="false">Tidak</option><option :value="true">Ya</option>
           </select></div>
         <button class="primary-button" type="submit" :disabled="residentSaving">{{ residentSaving ? 'Menyimpan...' :
           (editingResidentId ? 'Simpan Perubahan' : 'Tambah Warga') }}</button>

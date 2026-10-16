@@ -84,6 +84,9 @@ type ResidentRow = {
   father_name: string
   mother_name: string
   address: string
+  has_birth_certificate: boolean
+  has_kia: boolean
+  has_ktp: boolean
   stay_since: string | null
   moved_out_at: string | null
   resident_status: Resident['residentStatus']
@@ -230,6 +233,9 @@ function mapResident(row: ResidentRow): Resident {
     fatherName: row.father_name,
     motherName: row.mother_name,
     address: row.address,
+    hasBirthCertificate: row.has_birth_certificate ?? false,
+    hasKia: row.has_kia ?? false,
+    hasKtp: row.has_ktp ?? false,
     staySince: row.stay_since ?? undefined,
     movedOutAt: row.moved_out_at ?? undefined,
     residentStatus: row.resident_status,
@@ -262,6 +268,9 @@ function residentPayload(resident: Omit<Resident, 'id'>) {
     father_name: resident.fatherName,
     mother_name: resident.motherName,
     address: resident.address,
+    has_birth_certificate: resident.hasBirthCertificate,
+    has_kia: resident.hasKia,
+    has_ktp: resident.hasKtp,
     stay_since: resident.staySince,
     moved_out_at: resident.movedOutAt,
     resident_status: resident.residentStatus,

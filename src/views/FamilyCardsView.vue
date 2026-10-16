@@ -790,6 +790,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
           petunjuk pada sheet "Petunjuk" (RW, RT, Hubungan Keluarga, dan pilihan lain dapat dipilih dari dropdown
           yang bersumber dari sheet "Master Data"), lalu unggah kembali file yang sudah diisi.</p>
         <p class="muted">No. KK yang sama akan diperbarui. Warga dicocokkan berdasarkan NIK: data yang sama diperbarui, anggota baru ditambahkan. Anggota yang tidak ada dalam file tetap disimpan. NIK dari KK lain akan ditolak.</p>
+        <p class="muted">Kolom Akte, KIA, dan KTP diisi Ya/Tidak. Jika dikosongkan, status dokumen warga lama tetap dipertahankan; warga baru memakai nilai Tidak.</p>
         <div class="bulk-import-actions">
           <button class="secondary-button action-button" type="button" @click="downloadBulkTemplate">
             <AppIcon class="action-icon" icon="mdi:download-outline" /><span class="action-label">Unduh Template

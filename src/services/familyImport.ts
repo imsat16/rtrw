@@ -35,6 +35,7 @@ const EXAMPLE_NIK = 'CONTOH-NIK-0001'
 const GENDER_OPTIONS = ['L', 'P']
 const RESIDENT_STATUS_OPTIONS = ['tetap', 'sementara']
 const MARITAL_STATUS_OPTIONS = ['Belum Kawin', 'Kawin', 'Cerai Hidup', 'Cerai Mati']
+const DOCUMENT_OPTIONS = ['Ya', 'Tidak']
 
 const COLUMNS = [
   { key: 'kkNumber', label: 'No. KK*' },
@@ -57,6 +58,9 @@ const COLUMNS = [
   { key: 'motherName', label: 'Nama Ibu' },
   { key: 'staySince', label: 'Mulai Tinggal (YYYY-MM-DD)' },
   { key: 'residentStatus', label: 'Status Penduduk (tetap/sementara)' },
+  { key: 'hasBirthCertificate', label: 'Akte (Ya/Tidak)' },
+  { key: 'hasKia', label: 'KIA (Ya/Tidak)' },
+  { key: 'hasKtp', label: 'KTP (Ya/Tidak)' },
 ] as const
 
 type ColumnKey = (typeof COLUMNS)[number]['key']
@@ -127,6 +131,8 @@ export function buildFamilyImportTemplateWorkbook(
       : scopedRw
         ? `12. Akun Anda terbatas pada RW ${defaultRwLabel}: kolom RW boleh dikosongkan pada baris Kepala Keluarga (otomatis memakai RW Anda), namun kolom RT tetap wajib dipilih sesuai RT tujuan. Dropdown pada Master Data juga hanya menampilkan wilayah Anda.`
         : '12. Akun Anda memiliki akses ke seluruh wilayah: kolom RW dan RT wajib diisi sesuai KK masing-masing.',
+    '13. Kolom Akte, KIA (Kartu Identitas Anak), dan KTP menunjukkan kepemilikan dokumen tiap warga. Pilih Ya/Tidak dari dropdown; TRUE/FALSE dan 1/0 juga diterima.',
+    '14. Kolom dokumen boleh kosong: status warga lama tetap dipertahankan, warga baru memakai nilai awal Tidak. Pilih Tidak secara eksplisit untuk mengubah status menjadi tidak memiliki. Template lama tanpa tiga kolom dokumen tetap didukung.',
   ]
   lines.forEach((line, index) => {
     petunjuk.getCell(`A${index + 1}`).value = line
@@ -142,6 +148,7 @@ export function buildFamilyImportTemplateWorkbook(
     { header: 'Status Penduduk', values: RESIDENT_STATUS_OPTIONS },
     { header: 'Status Perkawinan', values: MARITAL_STATUS_OPTIONS },
     { header: 'Hubungan Keluarga', values: relationshipOptions },
+    { header: 'Kepemilikan Dokumen', values: DOCUMENT_OPTIONS },
   ]
   masterColumns.forEach((column, index) => {
     const letter = String.fromCharCode(65 + index)
@@ -179,6 +186,9 @@ export function buildFamilyImportTemplateWorkbook(
     motherName: '',
     staySince: '2020-01-01',
     residentStatus: 'tetap',
+    hasBirthCertificate: 'Ya',
+    hasKia: 'Tidak',
+    hasKtp: 'Ya',
   })
   sheet.getRow(2).eachCell((cell) => {
     cell.font = { italic: true, color: { argb: 'FF94A3B8' } }
@@ -216,6 +226,11 @@ export function buildFamilyImportTemplateWorkbook(
     sheet.getCell(row, colIndex('residentStatus')).dataValidation = listValidation(
       `'${SHEET_MASTER}'!$E$2:$E$${rangeEnd(RESIDENT_STATUS_OPTIONS.length)}`,
     )
+    for (const key of ['hasBirthCertificate', 'hasKia', 'hasKtp'] as const) {
+      sheet.getCell(row, colIndex(key)).dataValidation = listValidation(
+        `'${SHEET_MASTER}'!$H$2:$H$${rangeEnd(DOCUMENT_OPTIONS.length)}`,
+      )
+    }
   }
 
   return workbook
@@ -258,6 +273,9 @@ interface ParsedRow {
   motherName: string
   staySince: string
   residentStatus: string
+  hasBirthCertificate?: string
+  hasKia?: string
+  hasKtp?: string
 }
 
 function cellText(cell: ExcelJS.Cell): string {
@@ -348,6 +366,9 @@ export function parseFamilyImportWorkbook(workbook: ExcelJS.Workbook): {
       motherName: get('motherName'),
       staySince: cellDateText(row.getCell(colIndex('staySince'))),
       residentStatus: get('residentStatus'),
+      hasBirthCertificate: get('hasBirthCertificate'),
+      hasKia: get('hasKia'),
+      hasKtp: get('hasKtp'),
     })
   })
 
@@ -383,6 +404,20 @@ function normalizeResidentStatus(value: string): ResidentStatus {
 
 function normalizeCitizenship(value: string): Citizenship {
   return value.trim().toUpperCase() === 'WNA' ? 'WNA' : 'WNI'
+}
+
+function normalizeDocumentStatus(
+  value: string | undefined,
+  label: string,
+  row: number,
+  errors: FamilyImportError[],
+): boolean | undefined {
+  const normalized = value?.trim().toLowerCase() ?? ''
+  if (!normalized) return undefined
+  if (['ya', 'true', '1'].includes(normalized)) return true
+  if (['tidak', 'false', '0'].includes(normalized)) return false
+  errors.push({ row, message: `${label} harus Ya/Tidak, TRUE/FALSE, atau 1/0.` })
+  return undefined
 }
 
 export function buildFamilyGroups(
@@ -503,6 +538,9 @@ export function buildFamilyGroups(
       const before = errors.length
       const isHead = row === head
       const gender = normalizeGender(row.gender, row.row, errors)
+      const hasBirthCertificate = normalizeDocumentStatus(row.hasBirthCertificate, 'Akte', row.row, errors)
+      const hasKia = normalizeDocumentStatus(row.hasKia, 'KIA', row.row, errors)
+      const hasKtp = normalizeDocumentStatus(row.hasKtp, 'KTP', row.row, errors)
       requireField(row.nik, 'NIK', row.row, errors)
       requireField(row.fullName, 'Nama Lengkap', row.row, errors)
       requireField(row.birthPlace, 'Tempat Lahir', row.row, errors)
@@ -536,6 +574,9 @@ export function buildFamilyGroups(
         address: head.address,
         staySince: row.staySince || undefined,
         residentStatus: normalizeResidentStatus(row.residentStatus),
+        hasBirthCertificate,
+        hasKia,
+        hasKtp,
         provinceId: rw.provinceId,
         cityId: rw.cityId,
         districtId: rw.districtId,

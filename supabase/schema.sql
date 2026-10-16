@@ -296,6 +296,12 @@ create table if not exists public.residents (
   updated_at timestamptz not null default now()
 );
 
+-- Status kepemilikan dokumen; data lama dimulai dengan nilai false.
+alter table public.residents
+  add column if not exists has_birth_certificate boolean not null default false,
+  add column if not exists has_kia boolean not null default false,
+  add column if not exists has_ktp boolean not null default false;
+
 create table if not exists public.resident_mutations (
   id uuid primary key default gen_random_uuid(),
   resident_id uuid references public.residents(id) on delete set null,

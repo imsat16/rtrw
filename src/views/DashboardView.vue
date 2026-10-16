@@ -30,6 +30,11 @@ const colors = {
 }
 
 const stats = computed(() => calculateStats(cards.value, residents.value, mutations.value))
+const documentSummary = computed(() => [
+  { label: 'Akte', count: residents.value.filter((resident) => resident.hasBirthCertificate).length },
+  { label: 'KIA', count: residents.value.filter((resident) => resident.hasKia).length },
+  { label: 'KTP', count: residents.value.filter((resident) => resident.hasKtp).length },
+])
 const isRwScope = computed(() => ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? ''))
 const rwOptions = computed(() => {
   const options = regions.value.filter((region) => region.type === 'rw')
@@ -360,6 +365,13 @@ onMounted(async () => {
 
       <article class="chart-card">
         <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, datang, dan ibu hamil sesuai wilayah akun.</p></div></header>
+        <div class="chart-summary-table">
+          <table>
+            <caption>Kepemilikan dokumen warga saat ini sesuai wilayah terpilih</caption>
+            <thead><tr><th v-for="item in documentSummary" :key="item.label">{{ item.label }}</th></tr></thead>
+            <tbody><tr><td v-for="item in documentSummary" :key="item.label">{{ item.count }}</td></tr></tbody>
+          </table>
+        </div>
         <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir" />
         <div class="chart-summary-table">
           <table>

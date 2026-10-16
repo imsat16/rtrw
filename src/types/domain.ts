@@ -134,6 +134,9 @@ export interface Resident {
   fatherName: string
   motherName: string
   address: string
+  hasBirthCertificate?: boolean
+  hasKia?: boolean
+  hasKtp?: boolean
   staySince?: string
   movedOutAt?: string
   residentStatus: ResidentStatus

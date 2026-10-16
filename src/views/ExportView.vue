@@ -36,6 +36,11 @@ const rtOptions = computed(() =>
 
 const reports: Array<{ kind: ReportKind; title: string; description: string }> = [
   {
+    kind: 'paaredi',
+    title: 'Data Sasaran PAAREDI',
+    description: 'Rincian sasaran usia 0–24 tahun dan ibu hamil tercatat pada periode laporan, beserta rekap per RT. Dua sheet sesuai format PAAREDI; usia kandungan dikosongkan.',
+  },
+  {
     kind: 'lampid',
     title: 'Laporan Kependudukan LAMPID',
     description: 'Rekap lahir, meninggal, pindah, dan datang per periode.',
@@ -84,6 +89,7 @@ function getReportOptions(kind: ReportKind) {
     cards: cards.value,
     residents: residents.value,
     mutations: mutations.value,
+    rtId: selectedRtId.value || auth.profile?.rtId || undefined,
   }
 }
 
@@ -227,7 +233,8 @@ onMounted(() => {
         </div>
         <p v-else class="report-preview-empty">Tidak ada data pada periode dan wilayah yang dipilih.</p>
         <p v-if="previewData.totalRows > 200" class="muted">
-          Preview menampilkan 200 baris pertama. File XLSX mengikuti batas isi template.
+          Preview menampilkan 200 baris pertama.
+          {{ previewKind === 'paaredi' ? 'File XLSX PAAREDI memuat seluruh sasaran.' : 'File XLSX mengikuti batas isi template.' }}
         </p>
 
         <div class="report-preview-actions">

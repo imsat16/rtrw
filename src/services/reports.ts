@@ -1,5 +1,6 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
+import { buildPaarediData, createPaarediWorkbook, detailLabels } from './paaredi'
 import type {
   DashboardStats,
   FamilyCard,
@@ -13,8 +14,7 @@ import type {
 
 const reportTemplates = {
   lampid: '/dokumensementara/LAMPID.xlsx',
-  bukuIndukTetap:
-    '/dokumensementara/Model A.1. Buku Induk Penduduk Tetap - Penduduk Tetap.xlsx',
+  bukuIndukTetap: '/dokumensementara/Model A.1. Buku Induk Penduduk Tetap - Penduduk Tetap.xlsx',
   bukuIndukSementara:
     '/dokumensementara/Model A.2. Buku Induk Penduduk Tetap - Penduduk Sementara atau Musiman Dalam Kota Bandung.xlsx',
   perubahanTetap:
@@ -24,7 +24,7 @@ const reportTemplates = {
   perkembangan: '/dokumensementara/Model A.5. Buku Perkembangan Penduduk.xlsx',
 } as const
 
-export type ReportKind = keyof typeof reportTemplates
+export type ReportKind = keyof typeof reportTemplates | 'paaredi'
 
 export type ReportPreviewCell = string | number
 
@@ -42,6 +42,7 @@ interface ReportOptions {
   cards: FamilyCard[]
   residents: Resident[]
   mutations: ResidentMutation[]
+  rtId?: string
 }
 
 export function calculateStats(
@@ -114,10 +115,26 @@ function formatGender(gender: Resident['gender']) {
 }
 
 function formatMutationType(type: MutationType) {
-  return ({ lahir: 'Lahir', mati: 'Meninggal', pindah: 'Pindah', datang: 'Datang', hamil: 'Ibu Hamil' })[type]
+  return {
+    lahir: 'Lahir',
+    mati: 'Meninggal',
+    pindah: 'Pindah',
+    datang: 'Datang',
+    hamil: 'Ibu Hamil',
+  }[type]
 }
 
 export function buildReportPreview(options: ReportOptions): ReportPreview {
+  if (options.kind === 'paaredi') {
+    const { details } = buildPaarediData(options)
+    return {
+      columns: detailLabels.map((label, index) => ({ key: String(index), label })),
+      rows: details.map((cells) =>
+        Object.fromEntries(cells.map((value, index) => [String(index), value])),
+      ),
+      totalRows: details.length,
+    }
+  }
   const residents = getReportResidents(options)
   const mutations = getReportMutations(options)
 
@@ -153,7 +170,10 @@ export function buildReportPreview(options: ReportOptions): ReportPreview {
       { description: 'Datang', total: stats.datang },
       {
         description: 'Jumlah akhir',
-        total: Math.max(0, stats.permanent + stats.lahir + stats.datang - stats.pindah - stats.mati),
+        total: Math.max(
+          0,
+          stats.permanent + stats.lahir + stats.datang - stats.pindah - stats.mati,
+        ),
       },
     ]
     return {
@@ -218,29 +238,32 @@ export function buildReportPreview(options: ReportOptions): ReportPreview {
 }
 
 export async function exportReport(options: ReportOptions) {
-  const workbook = new ExcelJS.Workbook()
-  const response = await fetch(reportTemplates[options.kind])
-  const template = await response.arrayBuffer()
-  await workbook.xlsx.load(template)
-  const sheet = workbook.worksheets[0]
+  const workbook =
+    options.kind === 'paaredi' ? createPaarediWorkbook(options) : new ExcelJS.Workbook()
+  if (options.kind !== 'paaredi') {
+    const response = await fetch(reportTemplates[options.kind])
+    const template = await response.arrayBuffer()
+    await workbook.xlsx.load(template)
+    const sheet = workbook.worksheets[0]
 
-  if (!sheet) throw new Error('Template laporan tidak memiliki worksheet.')
+    if (!sheet) throw new Error('Template laporan tidak memiliki worksheet.')
 
-  const regionLine = buildRegionLine(options.regions, options.profile)
-  sheet.getCell('A3').value = regionLine
-  sheet.getCell('A4').value = `BULAN ${formatPeriod(options.period)}`
+    const regionLine = buildRegionLine(options.regions, options.profile)
+    sheet.getCell('A3').value = regionLine
+    sheet.getCell('A4').value = `BULAN ${formatPeriod(options.period)}`
 
-  const residents = getReportResidents(options)
-  const mutations = getReportMutations(options)
+    const residents = getReportResidents(options)
+    const mutations = getReportMutations(options)
 
-  if (options.kind === 'lampid') {
-    fillLampid(sheet, mutations)
-  } else if (options.kind === 'perkembangan') {
-    fillDevelopment(sheet, residents, mutations)
-  } else if (options.kind.includes('bukuInduk')) {
-    fillResidentBook(sheet, residents)
-  } else {
-    fillMutationBook(sheet, mutations)
+    if (options.kind === 'lampid') {
+      fillLampid(sheet, mutations)
+    } else if (options.kind === 'perkembangan') {
+      fillDevelopment(sheet, residents, mutations)
+    } else if (options.kind.includes('bukuInduk')) {
+      fillResidentBook(sheet, residents)
+    } else {
+      fillMutationBook(sheet, mutations)
+    }
   }
 
   const buffer = await workbook.xlsx.writeBuffer()
@@ -322,5 +345,8 @@ function fillDevelopment(
   sheet.getRow(9).getCell(3).value = stats.lahir
   sheet.getRow(10).getCell(3).value = stats.pindah
   sheet.getRow(11).getCell(3).value = stats.datang
-  sheet.getRow(12).getCell(3).value = Math.max(0, stats.permanent + stats.lahir + stats.datang - stats.pindah - stats.mati)
+  sheet.getRow(12).getCell(3).value = Math.max(
+    0,
+    stats.permanent + stats.lahir + stats.datang - stats.pindah - stats.mati,
+  )
 }
