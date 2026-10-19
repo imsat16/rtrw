@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runFamilyImport } from '@/services/familyImport'
 import type { FamilyGroupInput } from '@/services/familyImport'
-import { deleteFamilyCard, ensureFamilyRelationship, listFamilyImportIdentities, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
+import { deleteFamilyCard, listFamilyImportIdentities, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { familyImportIdentityKey } from '@/utils/familyRules'
 
 vi.mock('@/services/data', () => ({
-  deleteFamilyCard: vi.fn(), ensureFamilyRelationship: vi.fn(),
-  listFamilyImportIdentities: vi.fn(), saveFamilyCard: vi.fn(), saveResident: vi.fn(), updateFamilyCard: vi.fn(),
+  deleteFamilyCard: vi.fn<typeof import('@/services/data').deleteFamilyCard>(), ensureFamilyRelationship: vi.fn<typeof import('@/services/data').ensureFamilyRelationship>(),
+  listFamilyImportIdentities: vi.fn<typeof import('@/services/data').listFamilyImportIdentities>(), saveFamilyCard: vi.fn<typeof import('@/services/data').saveFamilyCard>(), saveResident: vi.fn<typeof import('@/services/data').saveResident>(), updateFamilyCard: vi.fn<typeof import('@/services/data').updateFamilyCard>(),
 }))
 
 function family(kk = '3273000000000001', nik = '3273000000000011'): FamilyGroupInput {
@@ -51,7 +51,7 @@ describe('duplicate prevention during import', () => {
   })
 
   it('imports new families while skipping repeats and keeps progress accurate', async () => {
-    const progress = vi.fn()
+    const progress = vi.fn<(processed: number, total: number) => void>()
     const result = await runFamilyImport([family(), family(), family('NEW-KK', 'NEW-NIK')], progress)
     expect(result.successFamilies).toBe(2)
     expect(result.failedFamilies).toBe(1)

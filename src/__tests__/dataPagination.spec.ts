@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { supabase } from '@/lib/supabase'
 import { listFamilyCards, listMutations, listResidents, listResidentsByFamilyCard } from '@/services/data'
 
-vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
+vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn<typeof supabase.from>() } }))
 
 function mockPages(count: number, cap = 1000, failAt = -1) {
   const records = Array.from({ length: count }, (_, i) => ({
@@ -10,9 +10,9 @@ function mockPages(count: number, cap = 1000, failAt = -1) {
     rt_id: i < 845 ? 'rt-other' : 'rt-07', residents: [{ nik: String(i) }],
   }))
   const query = {
-    select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
-    order: vi.fn().mockReturnThis(), or: vi.fn().mockReturnThis(), ilike: vi.fn().mockReturnThis(),
-    range: vi.fn(async (from: number, to: number) => ({
+    select: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), eq: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(),
+    order: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), or: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), ilike: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(),
+    range: vi.fn<(from: number, to: number) => Promise<{ data: typeof records | null; error: { message: string } | null }>>(async (from: number, to: number) => ({
       data: from === failAt ? null : records.slice(from, Math.min(to + 1, from + cap)),
       error: from === failAt ? { message: 'Page failed' } : null,
     })),

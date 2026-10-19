@@ -8,8 +8,8 @@ import { buildFamilyGroups, parseFamilyImportWorkbook, readWorkbookFromFile, run
 import type { FamilyImportResult } from '@/services/familyImport'
 
 vi.mock('@/services/familyImport', () => ({
-  buildFamilyGroups: vi.fn(), parseFamilyImportWorkbook: vi.fn(),
-  readWorkbookFromFile: vi.fn(), runFamilyImport: vi.fn(),
+  buildFamilyGroups: vi.fn<typeof import('@/services/familyImport').buildFamilyGroups>(), parseFamilyImportWorkbook: vi.fn<typeof import('@/services/familyImport').parseFamilyImportWorkbook>(),
+  readWorkbookFromFile: vi.fn<typeof import('@/services/familyImport').readWorkbookFromFile>(), runFamilyImport: vi.fn<typeof import('@/services/familyImport').runFamilyImport>(),
 }))
 
 const file = new File(['test'], 'families.xlsx')

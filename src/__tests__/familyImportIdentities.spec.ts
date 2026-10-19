@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { supabase } from '@/lib/supabase'
 import { listFamilyImportIdentities } from '@/services/data'
 
-vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
+vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn<typeof supabase.from>() } }))
 
 describe('import identity pagination', () => {
   it('reads every page even when the server returns fewer rows than requested', async () => {
@@ -12,6 +12,7 @@ describe('import identity pagination', () => {
       const query = {
         select: () => query, order: () => query, limit: () => query,
         gt: (_column: string, value: string) => { after = value; return query },
+        // oxlint-disable-next-line unicorn/no-thenable -- Models the awaitable Supabase query builder.
         then: (resolve: (value: unknown) => void) => {
           queries.push({ table, after })
           const column = table === 'family_cards' ? 'kk_number' : 'nik'

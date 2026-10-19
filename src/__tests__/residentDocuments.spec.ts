@@ -3,13 +3,13 @@ import { supabase } from '@/lib/supabase'
 import { listResidents, saveResident } from '@/services/data'
 import type { Resident } from '@/types/domain'
 
-vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn() } }))
+vi.mock('@/lib/supabase', () => ({ supabase: { from: vi.fn<typeof supabase.from>() } }))
 beforeEach(() => vi.resetAllMocks())
 
 it('reads document ownership and defaults legacy records to false', async () => {
   const query = {
-    select: vi.fn().mockReturnThis(), order: vi.fn().mockReturnThis(),
-    range: vi.fn().mockResolvedValueOnce({ data: [
+    select: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), order: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(),
+    range: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValueOnce({ data: [
       { id: '1', has_birth_certificate: true, has_kia: false, has_ktp: true },
       { id: '2' },
     ], error: null }).mockResolvedValue({ data: [], error: null }),
@@ -22,8 +22,8 @@ it('reads document ownership and defaults legacy records to false', async () => 
 
 it('persists explicit false when document ownership is unchecked', async () => {
   const query = {
-    update: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(),
-    select: vi.fn().mockReturnThis(), single: vi.fn().mockResolvedValue({ data: { id: '1' }, error: null }),
+    update: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), eq: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(),
+    select: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), single: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({ data: { id: '1' }, error: null }),
   }
   vi.mocked(supabase.from).mockReturnValue(query as unknown as ReturnType<typeof supabase.from>)
   await saveResident({ kkNumber: '123', nik: '456', hasBirthCertificate: false, hasKia: true, hasKtp: false } as Omit<Resident, 'id'>, '1')
