@@ -87,7 +87,7 @@ describe('PAAREDI export', () => {
     expect(summary[0]?.slice(8, 11)).toEqual([2, 0, 1])
   })
 
-  it('writes both printable sheets, real dates, merged headers and formula totals without truncation', async () => {
+  it('writes per-RT printable sheets, real dates, merged headers and formula totals without truncation', async () => {
     const input = options(
       Array.from({ length: 250 }, (_, i) => resident(String(i).padStart(3, '0'), '2020-01-01')),
     )
@@ -95,9 +95,9 @@ describe('PAAREDI export', () => {
     const buffer = await workbook.xlsx.writeBuffer()
     const loaded = new ExcelJS.Workbook()
     await loaded.xlsx.load(buffer)
-    const detail = loaded.getWorksheet('Rincian Sasaran')!
+    const detail = loaded.getWorksheet('RT 01')!
     const summary = loaded.getWorksheet('Rekap RT')!
-    expect(loaded.worksheets).toHaveLength(2)
+    expect(loaded.worksheets).toHaveLength(3)
     expect(detail.columnCount).toBe(18)
     expect(summary.columnCount).toBe(12)
     expect(detail.getCell('C260').value).toBe('Anak 249')
@@ -116,8 +116,66 @@ describe('PAAREDI export', () => {
 
   it('retains the blank template rows and zero totals when no targets exist', () => {
     const workbook = createPaarediWorkbook(options([]))
-    expect(workbook.getWorksheet('Rincian Sasaran')?.getCell('O38').formula).toBe('SUM(O11:O37)')
-    expect(workbook.getWorksheet('Rincian Sasaran')?.getCell('O38').result).toBe(0)
+    expect(workbook.getWorksheet('RT 01')?.getCell('O38').formula).toBe('SUM(O11:O37)')
+    expect(workbook.getWorksheet('RT 01')?.getCell('O38').result).toBe(0)
     expect(workbook.getWorksheet('Rekap RT')?.getCell('B12').value).toBe('RT 02')
+  })
+
+  it('separates all RTs, restarts numbering and gives preview the exact workbook sheet order', async () => {
+    const input = options([
+      resident('one', '2020-01-01'),
+      resident('two', '2021-01-01', { rtId: 'rt2', hasKia: true }),
+      resident('three', '2022-01-01', { rtId: 'rt2' }),
+    ])
+    const book = createPaarediWorkbook(input)
+    const loaded = new ExcelJS.Workbook()
+    await loaded.xlsx.load(await book.xlsx.writeBuffer())
+    expect(loaded.worksheets.map((sheet) => sheet.name)).toEqual(['RT 01', 'RT 02', 'Rekap RT'])
+    expect(loaded.getWorksheet('RT 01')!.getCell('C11').value).toBe('Anak one')
+    expect(loaded.getWorksheet('RT 01')!.getCell('C12').value).toBeNull()
+    expect(loaded.getWorksheet('RT 02')!.getCell('A11').value).toBe(1)
+    expect(loaded.getWorksheet('RT 02')!.getCell('A12').value).toBe(2)
+    const preview = buildReportPreview({ ...input, kind: 'paaredi' })
+    expect(preview.sheets?.map((sheet) => sheet.name)).toEqual(
+      loaded.worksheets.map((sheet) => sheet.name),
+    )
+    expect(preview.sheets?.map((sheet) => sheet.totalRows)).toEqual([1, 2, 2])
+    expect(preview.sheets?.[1]?.rows.map((row) => row['2'])).toEqual(['Anak three', 'Anak two'])
+    expect(preview.sheets?.[2]?.rows.map((row) => row['8'])).toEqual([1, 2])
+  })
+
+  it('exports and previews only the selected RT even with a mixed input dataset', () => {
+    const input = {
+      ...options([resident('one', '2020-01-01'), resident('two', '2021-01-01', { rtId: 'rt2' })]),
+      rtId: 'rt2',
+    }
+    const book = createPaarediWorkbook(input)
+    expect(book.worksheets.map((sheet) => sheet.name)).toEqual(['RT 02', 'Rekap RT'])
+    expect(book.getWorksheet('RT 02')!.getCell('C11').value).toBe('Anak two')
+    expect(book.getWorksheet('Rekap RT')!.getCell('B11').value).toBe('RT 02')
+    expect(book.getWorksheet('Rekap RT')!.getCell('B12').value).toBeNull()
+    const preview = buildReportPreview({ ...input, kind: 'paaredi' })
+    expect(preview.sheets?.map((sheet) => sheet.name)).toEqual(['RT 02', 'Rekap RT'])
+    expect(preview.rows.map((row) => row['2'])).toEqual(['Anak two'])
+  })
+
+  it('keeps duplicate RT labels across RWs distinguishable with valid sheet names', () => {
+    const input = options([])
+    input.regions = [
+      { id: 'rw1', type: 'rw', name: '07' },
+      { id: 'rw2', type: 'rw', name: '08' },
+      { id: 'rt1', type: 'rt', name: '01', rwId: 'rw1' },
+      { id: 'rt2', type: 'rt', name: '01', rwId: 'rw2' },
+      { id: 'rt3', type: 'rt', name: 'A/very:long*RT?label[that]exceeds31characters', rwId: 'rw1' },
+    ]
+    const book = createPaarediWorkbook(input)
+    const names = book.worksheets.map((sheet) => sheet.name)
+    expect(names).toContain('RT 01 - RW 07')
+    expect(names).toContain('RT 01 - RW 08')
+    expect(new Set(names.map((name) => name.toLowerCase())).size).toBe(names.length)
+    expect(names.every((name) => name.length <= 31 && !/[\\/*?:\[\]]/.test(name))).toBe(true)
+    expect(book.getWorksheet('RT 01 - RW 07')!.getCell('C3').value).toBe('07')
+    expect(book.getWorksheet('Rekap RT')!.getCell('B11').value).toBe('RT 01 - RW 07')
+    expect(book.getWorksheet('Rekap RT')!.getCell('B12').value).toBe('RT 01 - RW 08')
   })
 })

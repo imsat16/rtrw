@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import AppModal from '@/components/AppModal.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import { requestCache } from '@/lib/requestCache'
 import { listFamilyCards, listMutations, listRegions, listResidents } from '@/services/data'
 import {
   buildRegionLine,
@@ -19,11 +21,15 @@ const cards = ref<FamilyCard[]>([])
 const residents = ref<Resident[]>([])
 const mutations = ref<ResidentMutation[]>([])
 const exporting = ref('')
+const loading = ref(false)
+const dataReady = ref(false)
+const errorMessage = ref('')
 const selectedRtId = ref('')
 const filterOpen = ref(false)
 const previewOpen = ref(false)
 const previewKind = ref<ReportKind | null>(null)
 const previewData = ref<ReportPreview | null>(null)
+const previewSheetIndex = ref(0)
 const form = reactive({
   month: new Date().getMonth() + 1,
   year: new Date().getFullYear(),
@@ -31,14 +37,42 @@ const form = reactive({
 const filterDraft = reactive({ month: form.month, year: form.year, rtId: '' })
 
 const rtOptions = computed(() =>
-  regions.value.filter((item) => item.type === 'rt' && item.rwId === auth.profile?.rwId),
+  regions.value.filter(
+    (item) =>
+      item.type === 'rt' &&
+      (auth.profile?.role === 'superadmin' || item.rwId === auth.profile?.rwId),
+  ),
 )
+const canFilterRt = computed(() =>
+  ['superadmin', 'ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? ''),
+)
+const effectiveRtId = computed(() => selectedRtId.value || auth.profile?.rtId || '')
+const activeRtLabel = computed(() =>
+  effectiveRtId.value ? rtLabel(effectiveRtId.value) : 'Semua RT',
+)
+const previewSheets = computed(
+  () =>
+    previewData.value?.sheets ??
+    (previewData.value ? [{ ...previewData.value, name: 'Laporan' }] : []),
+)
+const activePreviewSheet = computed(() => previewSheets.value[previewSheetIndex.value])
+
+function rtLabel(id: string) {
+  const rt = regions.value.find((item) => item.id === id)
+  const rw = regions.value.find((item) => item.id === rt?.rwId)
+  const name = rt?.name ?? id
+  const label = /^RT\b/i.test(name) ? name : `RT ${name}`
+  return auth.profile?.role === 'superadmin' && rw
+    ? `${label} — RW ${rw.name.replace(/^RW\s*/i, '')}`
+    : label
+}
 
 const reports: Array<{ kind: ReportKind; title: string; description: string }> = [
   {
     kind: 'paaredi',
     title: 'Data Sasaran PAAREDI',
-    description: 'Rincian sasaran usia 0–24 tahun dan ibu hamil tercatat pada periode laporan, beserta rekap per RT. Dua sheet sesuai format PAAREDI; usia kandungan dikosongkan.',
+    description:
+      'Rincian sasaran usia 0–24 tahun dan ibu hamil tercatat pada periode laporan. Sheet rincian dipisahkan per RT, disertai rekap RT; usia kandungan dikosongkan.',
   },
   {
     kind: 'lampid',
@@ -76,8 +110,9 @@ const activePreviewReport = computed(() =>
   reports.find((report) => report.kind === previewKind.value),
 )
 
-const previewContext = computed(() =>
-  `${buildRegionLine(regions.value, auth.profile)} · ${formatPeriod({ month: Number(form.month), year: Number(form.year) })}`,
+const previewContext = computed(
+  () =>
+    `${buildRegionLine(regions.value, auth.profile)} · ${activeRtLabel.value} · ${formatPeriod({ month: Number(form.month), year: Number(form.year) })}`,
 )
 
 function getReportOptions(kind: ReportKind) {
@@ -93,23 +128,36 @@ function getReportOptions(kind: ReportKind) {
   }
 }
 
-async function loadData() {
-  const rtId = ['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? '')
-    ? selectedRtId.value || undefined
-    : undefined
-  const [regionData, cardData, residentData, mutationData] = await Promise.all([
-    listRegions(auth.profile),
-    listFamilyCards(auth.profile, rtId),
-    listResidents(auth.profile, rtId),
-    listMutations(auth.profile, rtId),
-  ])
-  regions.value = regionData
-  cards.value = cardData
-  residents.value = residentData
-  mutations.value = mutationData
+async function loadData(force = false) {
+  if (loading.value) return
+  loading.value = true
+  dataReady.value = false
+  errorMessage.value = ''
+  closePreview()
+  if (force) requestCache.clear()
+  const rtId = effectiveRtId.value || undefined
+  try {
+    const [regionData, cardData, residentData, mutationData] = await Promise.all([
+      listRegions(auth.profile),
+      listFamilyCards(auth.profile, rtId),
+      listResidents(auth.profile, rtId),
+      listMutations(auth.profile, rtId),
+    ])
+    regions.value = regionData
+    cards.value = cardData
+    residents.value = residentData
+    mutations.value = mutationData
+    dataReady.value = true
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : 'Data laporan gagal dimuat. Silakan refresh data.'
+  } finally {
+    loading.value = false
+  }
 }
 
 async function applyFilter() {
+  if (loading.value || exporting.value) return
   form.month = Number(filterDraft.month)
   form.year = Number(filterDraft.year)
   selectedRtId.value = filterDraft.rtId
@@ -131,16 +179,23 @@ function openFilter() {
 }
 
 async function download(kind: ReportKind) {
-  if (!auth.hasPermission('reports.export')) return
+  if (!dataReady.value || loading.value || exporting.value || !auth.hasPermission('reports.export'))
+    return
   exporting.value = kind
+  errorMessage.value = ''
   try {
     await exportReport(getReportOptions(kind))
+  } catch (error) {
+    errorMessage.value =
+      error instanceof Error ? error.message : 'Laporan gagal diunduh. Silakan coba lagi.'
   } finally {
     exporting.value = ''
   }
 }
 
 function openPreview(kind: ReportKind) {
+  if (!dataReady.value || loading.value || !auth.hasPermission('reports.view')) return
+  previewSheetIndex.value = 0
   previewKind.value = kind
   previewData.value = buildReportPreview(getReportOptions(kind))
   previewOpen.value = true
@@ -150,6 +205,7 @@ function closePreview() {
   previewOpen.value = false
   previewKind.value = null
   previewData.value = null
+  previewSheetIndex.value = 0
 }
 
 onMounted(() => {
@@ -160,10 +216,33 @@ onMounted(() => {
 <template>
   <section class="content-stack">
     <div class="toolbar">
-      <span>Periode {{ form.month }}/{{ form.year }} · {{ selectedRtId ? rtOptions.find((item) => item.id === selectedRtId)?.name : 'Semua RT' }}</span>
-      <button class="secondary-button" type="button" @click="openFilter">Filter Laporan</button>
-      <button class="secondary-button" type="button" @click="loadData">Refresh Data</button>
+      <span>Periode {{ form.month }}/{{ form.year }} · {{ activeRtLabel }}</span>
+      <div class="table-actions">
+        <button
+          class="secondary-button action-button icon-only-button"
+          type="button"
+          aria-label="Filter laporan"
+          title="Filter laporan"
+          :disabled="loading || Boolean(exporting)"
+          @click="openFilter"
+        >
+          <AppIcon class="action-icon" icon="mdi:filter-variant" />
+        </button>
+        <button
+          class="secondary-button action-button icon-only-button"
+          type="button"
+          aria-label="Refresh data"
+          title="Refresh data"
+          :disabled="loading || Boolean(exporting)"
+          @click="loadData(true)"
+        >
+          <span v-if="loading" class="loading-spinner" aria-hidden="true"></span
+          ><AppIcon v-else class="action-icon" icon="mdi:refresh" />
+        </button>
+      </div>
     </div>
+    <p v-if="loading" class="muted" role="status">Memuat data laporan…</p>
+    <p v-if="errorMessage" class="alert" role="alert">{{ errorMessage }}</p>
 
     <article v-for="report in reports" :key="report.kind" class="report-action">
       <div>
@@ -174,7 +253,7 @@ onMounted(() => {
         <button
           class="secondary-button"
           type="button"
-          :disabled="!auth.hasPermission('reports.view')"
+          :disabled="!dataReady || loading || !auth.hasPermission('reports.view')"
           @click="openPreview(report.kind)"
         >
           Preview
@@ -182,19 +261,43 @@ onMounted(() => {
         <button
           class="primary-button"
           type="button"
-          :disabled="exporting === report.kind || !auth.hasPermission('reports.export')"
+          :disabled="
+            !dataReady || loading || Boolean(exporting) || !auth.hasPermission('reports.export')
+          "
           @click="download(report.kind)"
         >
-          {{ !auth.hasPermission('reports.export') ? 'Tidak diizinkan' : exporting === report.kind ? 'Menyiapkan...' : 'Download XLSX' }}
+          {{
+            !auth.hasPermission('reports.export')
+              ? 'Tidak diizinkan'
+              : exporting === report.kind
+                ? 'Menyiapkan...'
+                : 'Download XLSX'
+          }}
         </button>
       </div>
     </article>
 
     <AppModal :open="filterOpen" title="Filter Laporan" @close="filterOpen = false">
       <form class="form-grid modal-form" @submit.prevent="applyFilter">
-        <div class="field"><label for="month">Bulan</label><select id="month" v-model="filterDraft.month"><option v-for="month in 12" :key="month" :value="month">{{ month }}</option></select></div>
-        <div class="field"><label for="year">Tahun</label><input id="year" v-model="filterDraft.year" min="2020" type="number" /></div>
-        <div v-if="['ketua_rw', 'staff_rw'].includes(auth.profile?.role ?? '')" class="field"><label for="rtFilter">RT</label><select id="rtFilter" v-model="filterDraft.rtId"><option value="">Semua RT</option><option v-for="item in rtOptions" :key="item.id" :value="item.id">{{ item.name }}</option></select></div>
+        <div class="field">
+          <label for="month">Bulan</label
+          ><select id="month" v-model="filterDraft.month">
+            <option v-for="month in 12" :key="month" :value="month">{{ month }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="year">Tahun</label
+          ><input id="year" v-model="filterDraft.year" min="2020" type="number" />
+        </div>
+        <div v-if="canFilterRt" class="field">
+          <label for="rtFilter">RT</label
+          ><select id="rtFilter" v-model="filterDraft.rtId">
+            <option value="">Semua RT</option>
+            <option v-for="item in rtOptions" :key="item.id" :value="item.id">
+              {{ rtLabel(item.id) }}
+            </option>
+          </select>
+        </div>
         <button class="secondary-button" type="button" @click="resetFilter">Reset</button>
         <button class="primary-button" type="submit">Terapkan</button>
       </form>
@@ -212,29 +315,46 @@ onMounted(() => {
             <strong>{{ activePreviewReport?.title }}</strong>
             <p class="muted">{{ previewContext }}</p>
           </div>
-          <span class="badge">{{ previewData.totalRows }} baris</span>
+          <span class="badge">{{ activePreviewSheet?.totalRows ?? 0 }} baris</span>
         </div>
 
-        <div v-if="previewData.rows.length" class="table-wrap report-preview-table">
+        <div v-if="previewSheets.length > 1" class="field">
+          <label for="previewSheet">Sheet laporan</label>
+          <select id="previewSheet" v-model="previewSheetIndex">
+            <option v-for="(sheet, index) in previewSheets" :key="sheet.name" :value="index">
+              {{ sheet.name }} ({{ sheet.totalRows }} baris)
+            </option>
+          </select>
+        </div>
+
+        <div v-if="activePreviewSheet?.rows.length" class="table-wrap report-preview-table">
           <table>
             <thead>
               <tr>
-                <th v-for="column in previewData.columns" :key="column.key">{{ column.label }}</th>
+                <th v-for="column in activePreviewSheet.columns" :key="column.key">
+                  {{ column.label }}
+                </th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="(row, rowIndex) in previewData.rows.slice(0, 200)" :key="rowIndex">
-                <td v-for="column in previewData.columns" :key="column.key">
+              <tr v-for="(row, rowIndex) in activePreviewSheet.rows.slice(0, 200)" :key="rowIndex">
+                <td v-for="column in activePreviewSheet.columns" :key="column.key">
                   {{ row[column.key] ?? '-' }}
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
-        <p v-else class="report-preview-empty">Tidak ada data pada periode dan wilayah yang dipilih.</p>
-        <p v-if="previewData.totalRows > 200" class="muted">
+        <p v-else class="report-preview-empty">
+          Tidak ada data pada periode dan wilayah yang dipilih.
+        </p>
+        <p v-if="activePreviewSheet && activePreviewSheet.totalRows > 200" class="muted">
           Preview menampilkan 200 baris pertama.
-          {{ previewKind === 'paaredi' ? 'File XLSX PAAREDI memuat seluruh sasaran.' : 'File XLSX mengikuti batas isi template.' }}
+          {{
+            previewKind === 'paaredi'
+              ? 'File XLSX PAAREDI memuat seluruh sasaran.'
+              : 'File XLSX mengikuti batas isi template.'
+          }}
         </p>
 
         <div class="report-preview-actions">

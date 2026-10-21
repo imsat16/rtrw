@@ -1,3 +1,4 @@
+import { readableText } from '@/utils/readableText'
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
 import {
@@ -282,16 +283,21 @@ function cellText(cell: ExcelJS.Cell): string {
   const value = cell.value
   if (value === null || value === undefined) return ''
   if (value instanceof Date) return formatDate(value)
-  if (typeof value === 'object' && 'richText' in value) {
-    return (value as { richText: Array<{ text: string }> }).richText
-      .map((part) => part.text)
-      .join('')
+  if (typeof value === 'object' && 'result' in value && value.result instanceof Date)
+    return formatDate(value.result)
+  const text = readableText(value)
+  const blankFormula =
+    typeof value === 'object' &&
+    ('formula' in value || 'sharedFormula' in value) &&
+    (!('result' in value) || value.result === '' || value.result == null)
+  if (
+    !text &&
+    ((typeof value !== 'string' && !blankFormula) ||
+      (typeof value === 'string' && value.includes('[object Object]')))
+  ) {
+    throw new Error('Sel berisi objek atau teks tidak valid. Isi teks biasa dari sumber asli.')
   }
-  if (typeof value === 'object' && 'result' in value) {
-    const result = (value as { result: unknown }).result
-    return result instanceof Date ? formatDate(result) : String(result ?? '').trim()
-  }
-  return String(value).trim()
+  return text
 }
 
 function formatDate(date: Date) {
@@ -327,49 +333,64 @@ export function parseFamilyImportWorkbook(workbook: ExcelJS.Workbook): {
   const parseErrors: FamilyImportError[] = []
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return
-    const get = (key: ColumnKey) => cellText(row.getCell(colIndex(key)))
-    const kkNumber = get('kkNumber')
-    const nik = get('nik')
-    const fullName = get('fullName')
-    if (!kkNumber && !nik && !fullName) return
-    if (
-      normalizeKkNumber(kkNumber) === EXAMPLE_KK_NUMBER ||
-      normalizeFreeTextId(nik) === EXAMPLE_NIK
-    ) {
+    try {
+      const get = (key: ColumnKey) => {
+        try {
+          return cellText(row.getCell(colIndex(key)))
+        } catch (error) {
+          throw new Error(
+            `${COLUMNS[colIndex(key) - 1]!.label}: ${error instanceof Error ? error.message : 'Format sel tidak valid.'}`,
+          )
+        }
+      }
+      const kkNumber = get('kkNumber')
+      const nik = get('nik')
+      const fullName = get('fullName')
+      if (!kkNumber && !nik && !fullName) return
+      if (
+        normalizeKkNumber(kkNumber) === EXAMPLE_KK_NUMBER ||
+        normalizeFreeTextId(nik) === EXAMPLE_NIK
+      ) {
+        parseErrors.push({
+          row: rowNumber,
+          message:
+            'Baris ini masih berisi data contoh dari template. Hapus atau ganti dengan data asli sebelum mengunggah.',
+        })
+        return
+      }
+
+      rows.push({
+        row: rowNumber,
+        kkNumber: normalizeKkNumber(kkNumber),
+        address: get('address'),
+        registeredAt: cellDateText(row.getCell(colIndex('registeredAt'))),
+        rwLabel: get('rwLabel'),
+        rtLabel: get('rtLabel'),
+        nik: normalizeFreeTextId(nik),
+        fullName,
+        gender: get('gender'),
+        birthPlace: get('birthPlace'),
+        birthDate: cellDateText(row.getCell(colIndex('birthDate'))),
+        religion: get('religion'),
+        education: get('education'),
+        occupation: get('occupation'),
+        maritalStatus: get('maritalStatus'),
+        familyRelationship: get('familyRelationship'),
+        citizenship: get('citizenship'),
+        fatherName: get('fatherName'),
+        motherName: get('motherName'),
+        staySince: cellDateText(row.getCell(colIndex('staySince'))),
+        residentStatus: get('residentStatus'),
+        hasBirthCertificate: get('hasBirthCertificate'),
+        hasKia: get('hasKia'),
+        hasKtp: get('hasKtp'),
+      })
+    } catch (error) {
       parseErrors.push({
         row: rowNumber,
-        message:
-          'Baris ini masih berisi data contoh dari template. Hapus atau ganti dengan data asli sebelum mengunggah.',
+        message: error instanceof Error ? error.message : 'Format sel tidak valid.',
       })
-      return
     }
-
-    rows.push({
-      row: rowNumber,
-      kkNumber: normalizeKkNumber(kkNumber),
-      address: get('address'),
-      registeredAt: cellDateText(row.getCell(colIndex('registeredAt'))),
-      rwLabel: get('rwLabel'),
-      rtLabel: get('rtLabel'),
-      nik: normalizeFreeTextId(nik),
-      fullName,
-      gender: get('gender'),
-      birthPlace: get('birthPlace'),
-      birthDate: cellDateText(row.getCell(colIndex('birthDate'))),
-      religion: get('religion'),
-      education: get('education'),
-      occupation: get('occupation'),
-      maritalStatus: get('maritalStatus'),
-      familyRelationship: get('familyRelationship'),
-      citizenship: get('citizenship'),
-      fatherName: get('fatherName'),
-      motherName: get('motherName'),
-      staySince: cellDateText(row.getCell(colIndex('staySince'))),
-      residentStatus: get('residentStatus'),
-      hasBirthCertificate: get('hasBirthCertificate'),
-      hasKia: get('hasKia'),
-      hasKtp: get('hasKtp'),
-    })
   })
 
   if (!rows.length && !parseErrors.length) {
@@ -538,7 +559,12 @@ export function buildFamilyGroups(
       const before = errors.length
       const isHead = row === head
       const gender = normalizeGender(row.gender, row.row, errors)
-      const hasBirthCertificate = normalizeDocumentStatus(row.hasBirthCertificate, 'Akte', row.row, errors)
+      const hasBirthCertificate = normalizeDocumentStatus(
+        row.hasBirthCertificate,
+        'Akte',
+        row.row,
+        errors,
+      )
       const hasKia = normalizeDocumentStatus(row.hasKia, 'KIA', row.row, errors)
       const hasKtp = normalizeDocumentStatus(row.hasKtp, 'KTP', row.row, errors)
       requireField(row.nik, 'NIK', row.row, errors)

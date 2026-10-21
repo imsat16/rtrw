@@ -1,5 +1,6 @@
 import { supabase } from '@/lib/supabase'
 import { normalizeFreeTextId } from '@/utils/familyRules'
+import { readableText, requireReadableText } from '@/utils/readableText'
 import type {
   FamilyCard,
   Permission,
@@ -182,7 +183,7 @@ function mapFamilyCard(row: FamilyCardRow): FamilyCard {
   return {
     id: row.id,
     kkNumber: row.kk_number,
-    headName: row.head_name,
+    headName: readableText(row.head_name),
     address: row.address,
     memberCount: row.residents?.length ?? 0,
     memberNiks: row.residents?.map((resident) => resident.nik) ?? [],
@@ -201,7 +202,7 @@ function mapFamilyCard(row: FamilyCardRow): FamilyCard {
 function familyCardPayload(card: Omit<FamilyCard, 'id'>) {
   return clean({
     kk_number: card.kkNumber,
-    head_name: card.headName,
+    head_name: requireReadableText(card.headName, 'Nama kepala keluarga'),
     address: card.address,
     province_id: card.provinceId,
     city_id: card.cityId,
@@ -220,7 +221,7 @@ function mapResident(row: ResidentRow): Resident {
     familyCardId: row.family_card_id,
     kkNumber: row.kk_number,
     nik: row.nik,
-    fullName: row.full_name,
+    fullName: readableText(row.full_name),
     gender: row.gender,
     birthPlace: row.birth_place,
     birthDate: row.birth_date,
@@ -230,8 +231,8 @@ function mapResident(row: ResidentRow): Resident {
     maritalStatus: row.marital_status,
     familyRelationship: row.family_relationship,
     citizenship: row.citizenship,
-    fatherName: row.father_name,
-    motherName: row.mother_name,
+    fatherName: readableText(row.father_name),
+    motherName: readableText(row.mother_name),
     address: row.address,
     hasBirthCertificate: row.has_birth_certificate ?? false,
     hasKia: row.has_kia ?? false,
@@ -255,7 +256,7 @@ function residentPayload(resident: Omit<Resident, 'id'>) {
     family_card_id: resident.familyCardId,
     kk_number: resident.kkNumber,
     nik: resident.nik,
-    full_name: resident.fullName,
+    full_name: requireReadableText(resident.fullName, 'Nama warga'),
     gender: resident.gender,
     birth_place: resident.birthPlace,
     birth_date: resident.birthDate,
@@ -265,8 +266,8 @@ function residentPayload(resident: Omit<Resident, 'id'>) {
     marital_status: resident.maritalStatus,
     family_relationship: resident.familyRelationship,
     citizenship: resident.citizenship,
-    father_name: resident.fatherName,
-    mother_name: resident.motherName,
+    father_name: requireReadableText(resident.fatherName, 'Nama ayah', false),
+    mother_name: requireReadableText(resident.motherName, 'Nama ibu', false),
     address: resident.address,
     has_birth_certificate: resident.hasBirthCertificate,
     has_kia: resident.hasKia,
@@ -288,7 +289,7 @@ function mapMutation(row: MutationRow): ResidentMutation {
   return {
     id: row.id,
     residentId: row.resident_id ?? undefined,
-    residentName: row.resident_name,
+    residentName: readableText(row.resident_name),
     gender: row.gender,
     mutationType: row.mutation_type,
     mutationDate: row.mutation_date,
@@ -677,7 +678,11 @@ export async function listFamilyCards(
   rwId?: string,
   search?: string,
 ) {
-  let request = supabase.from('family_cards').select('*, residents(nik)').order('head_name').order('id')
+  let request = supabase
+    .from('family_cards')
+    .select('*, residents(nik)')
+    .order('head_name')
+    .order('id')
   if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId) {
     request = request.eq('rw_id', profile.rwId)
   }
@@ -689,6 +694,94 @@ export async function listFamilyCards(
   if (search?.trim()) request = request.ilike('kk_number', `%${search.trim()}%`)
   const data = await readAllRows<FamilyCardRow>((from, to) => request.range(from, to))
   return data.map(mapFamilyCard)
+}
+
+export type TablePageOptions = {
+  page: number
+  pageSize: number
+  sortKey: string
+  sortDirection: 'asc' | 'desc'
+  search?: string
+  rwId?: string
+  rtId?: string
+}
+
+export type TablePage<T> = { items: T[]; total: number }
+
+function searchTerm(value = '') {
+  // Keep PostgREST logic/operators out of user-entered search text.
+  return value
+    .trim()
+    .replace(/[(),."\\%_*]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+async function readTablePage(
+  table: 'residents' | 'family_cards',
+  profile: UserProfile | null,
+  options: TablePageOptions,
+) {
+  const columns: Record<string, string> =
+    table === 'residents'
+      ? {
+          nik: 'nik',
+          kkNumber: 'kk_number',
+          fullName: 'full_name',
+          familyRelationship: 'family_relationship',
+          gender: 'gender',
+          birthDate: 'birth_date',
+          residentStatus: 'resident_status',
+          address: 'address',
+        }
+      : { kkNumber: 'kk_number', headName: 'head_name', address: 'address' }
+  const column = columns[options.sortKey] ?? (table === 'residents' ? 'full_name' : 'kk_number')
+  const limit = [10, 25, 50].includes(options.pageSize) ? options.pageSize : 10
+  const page = Number.isFinite(options.page) ? Math.max(1, Math.floor(options.page)) : 1
+  const offset = (page - 1) * limit
+  let request = supabase
+    .from(table)
+    .select(table === 'residents' ? '*' : '*, residents(nik)', { count: 'exact' })
+    .order(column, { ascending: options.sortDirection !== 'desc' })
+    .order('id')
+  if (profile && ['ketua_rw', 'staff_rw'].includes(profile.role) && profile.rwId)
+    request = request.eq('rw_id', profile.rwId)
+  if (profile && ['ketua_rt', 'staff_rt'].includes(profile.role) && profile.rtId)
+    request = request.eq('rt_id', profile.rtId)
+  if (options.rwId) request = request.eq('rw_id', options.rwId)
+  if (options.rtId) request = request.eq('rt_id', options.rtId)
+  const term = searchTerm(options.search)
+  if (term) {
+    const fields =
+      table === 'residents' ? ['nik', 'full_name', 'kk_number'] : ['kk_number', 'head_name']
+    request = request.or(fields.map((field) => `${field}.ilike.%${term}%`).join(','))
+  }
+  let response = await request.range(offset, offset + limit - 1)
+  // PostgREST can return 416 after deleting the final row of the final page.
+  // Read the first page to recover the total; the view then clamps its page.
+  if (response.status === 416 && offset > 0) response = await request.range(0, limit - 1)
+  const { data, count, error } = response
+  assertNoError(error)
+  return { data: data ?? [], total: count ?? 0 }
+}
+
+export async function listResidentsPage(
+  profile: UserProfile | null,
+  options: TablePageOptions,
+): Promise<TablePage<Resident>> {
+  const result = await readTablePage('residents', profile, options)
+  return { items: (result.data as unknown as ResidentRow[]).map(mapResident), total: result.total }
+}
+
+export async function listFamilyCardsPage(
+  profile: UserProfile | null,
+  options: TablePageOptions,
+): Promise<TablePage<FamilyCard>> {
+  const result = await readTablePage('family_cards', profile, options)
+  return {
+    items: (result.data as unknown as FamilyCardRow[]).map(mapFamilyCard),
+    total: result.total,
+  }
 }
 
 export async function listResidentsByFamilyCard(familyCardId: string) {
@@ -761,7 +854,7 @@ export async function createFamilyCardWithHead(input: FamilyHeadInput) {
   const { data, error } = await supabase.rpc('create_family_card_with_head', {
     p_kk_number: input.kkNumber,
     p_head_nik: input.headNik,
-    p_head_name: input.headName,
+    p_head_name: requireReadableText(input.headName, 'Nama kepala keluarga'),
     p_address: input.address,
     p_gender: input.gender,
     p_birth_place: input.birthPlace,

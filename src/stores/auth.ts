@@ -2,7 +2,13 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import type { User } from '@supabase/supabase-js'
 import { supabase } from '@/lib/supabase'
-import { getProfile, listPermissions, listRolePermissions, listUserPermissions } from '@/services/data'
+import { requestCache } from '@/lib/requestCache'
+import {
+  getProfile,
+  listPermissions,
+  listRolePermissions,
+  listUserPermissions,
+} from '@/services/data'
 import { roleLabel } from '@/services/scope'
 import type { PermissionCode, UserProfile } from '@/types/domain'
 
@@ -14,7 +20,10 @@ export const useAuthStore = defineStore('auth', () => {
   const initialized = ref(false)
   let initializationPromise: Promise<void> | null = null
   let authListenerRegistered = false
-  let profileLoadPromise = Promise.resolve()
+  let profileLoadPromise: Promise<void> | null = null
+  let pendingUserId: string | null = null
+  let profileVersion = 0
+  let profileLoadedAt = 0
 
   const isAuthenticated = computed(() => Boolean(currentUser.value && profile.value))
   const roleLabelText = computed(() => roleLabel(profile.value?.role))
@@ -24,7 +33,7 @@ export const useAuthStore = defineStore('auth', () => {
   const canManageUsers = computed(() => hasPermission('users.manage'))
   const canManageRbac = computed(() => hasPermission('rbac.manage'))
 
-  async function loadProfile(user: User | null) {
+  async function loadProfile(user: User | null, version: number) {
     currentUser.value = user
     if (!user) {
       profile.value = null
@@ -33,7 +42,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     try {
-      profile.value = await getProfile(user.id)
+      const loadedProfile = await getProfile(user.id)
       const [permissionMaster, rolePermissions, userPermissions] = await Promise.all([
         listPermissions(),
         listRolePermissions(),
@@ -41,16 +50,20 @@ export const useAuthStore = defineStore('auth', () => {
       ])
       const roleDefaults = new Map(
         rolePermissions
-          .filter((item) => item.roleId === profile.value?.roleId)
+          .filter((item) => item.roleId === loadedProfile.roleId)
           .map((item) => [item.permissionId, item.allowed]),
       )
       userPermissions.forEach((item) => roleDefaults.set(item.permissionId, item.allowed))
       const permissionCodeById = new Map(permissionMaster.map((item) => [item.id, item.code]))
+      if (version !== profileVersion) return
+      profile.value = loadedProfile
+      profileLoadedAt = Date.now()
       permissions.value = [...roleDefaults.entries()]
         .filter(([, allowed]) => allowed)
         .map(([permissionId]) => permissionCodeById.get(permissionId))
         .filter((permission): permission is PermissionCode => Boolean(permission))
     } catch {
+      if (version !== profileVersion) return
       profile.value = {
         uid: user.id,
         email: user.email ?? '',
@@ -63,8 +76,26 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function queueProfileLoad(user: User | null) {
-    profileLoadPromise = profileLoadPromise.then(() => loadProfile(user))
-    return profileLoadPromise
+    if (user && pendingUserId === user.id && profileLoadPromise) return profileLoadPromise
+    if (user && profile.value?.uid === user.id && Date.now() - profileLoadedAt < 120_000) {
+      currentUser.value = user
+      return Promise.resolve()
+    }
+    const version = ++profileVersion
+    if (!user || currentUser.value?.id !== user.id) {
+      requestCache.clear()
+      profile.value = null
+      permissions.value = []
+    }
+    pendingUserId = user?.id ?? null
+    const pending = loadProfile(user, version).finally(() => {
+      if (profileLoadPromise === pending) {
+        profileLoadPromise = null
+        pendingUserId = null
+      }
+    })
+    profileLoadPromise = pending
+    return pending
   }
 
   function initialize() {
@@ -77,11 +108,16 @@ export const useAuthStore = defineStore('auth', () => {
         // Sesi awal dipulihkan oleh getSession di bawah agar route guard selalu
         // menunggu profile selesai dimuat sebelum memutuskan redirect.
         if (event === 'INITIAL_SESSION') return
-        void queueProfileLoad(session?.user ?? null)
+        if (!session) void queueProfileLoad(null)
+        else
+          setTimeout(() => {
+            void queueProfileLoad(session.user)
+          }, 0)
       })
     }
 
-    initializationPromise = supabase.auth.getSession()
+    initializationPromise = supabase.auth
+      .getSession()
       .then(async ({ data, error }) => {
         if (error) throw error
         await queueProfileLoad(data.session?.user ?? null)
@@ -95,6 +131,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function login(email: string, password: string) {
+    requestCache.clear()
+    profileLoadedAt = 0
     loading.value = true
 
     try {
@@ -112,9 +150,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   async function logout() {
     await supabase.auth.signOut()
-    currentUser.value = null
-    profile.value = null
-    permissions.value = []
+    await queueProfileLoad(null)
   }
 
   return {

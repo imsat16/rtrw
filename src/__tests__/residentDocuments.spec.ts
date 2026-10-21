@@ -26,7 +26,7 @@ it('persists explicit false when document ownership is unchecked', async () => {
     select: vi.fn<(...args: unknown[]) => unknown>().mockReturnThis(), single: vi.fn<(...args: unknown[]) => unknown>().mockResolvedValue({ data: { id: '1' }, error: null }),
   }
   vi.mocked(supabase.from).mockReturnValue(query as unknown as ReturnType<typeof supabase.from>)
-  await saveResident({ kkNumber: '123', nik: '456', hasBirthCertificate: false, hasKia: true, hasKtp: false } as Omit<Resident, 'id'>, '1')
+  await saveResident({ kkNumber: '123', nik: '456', fullName: 'Warga Uji', hasBirthCertificate: false, hasKia: true, hasKtp: false } as Omit<Resident, 'id'>, '1')
   expect(query.update).toHaveBeenCalledWith(expect.objectContaining({
     has_birth_certificate: false, has_kia: true, has_ktp: false,
   }))

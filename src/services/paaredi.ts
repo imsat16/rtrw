@@ -133,6 +133,19 @@ export function buildPaarediData(options: PaarediOptions) {
     if (!groups.some((group) => group.id === id))
       groups.push({ id, label: id ? `RT ${id}` : 'RT belum diisi' })
   }
+  const duplicateLabels = new Set(
+    groups
+      .filter((group) =>
+        groups.some((other) => other.id !== group.id && other.label === group.label),
+      )
+      .map((group) => group.label),
+  )
+  for (const group of groups) {
+    if (!duplicateLabels.has(group.label)) continue
+    const rt = options.regions.find((region) => region.id === group.id)
+    const rw = options.regions.find((region) => region.id === rt?.rwId)
+    if (rw) group.label += ` - RW ${rw.name.replace(/^RW\s*/i, '')}`
+  }
   const summary = groups.map((group, index) => {
     const rows = details.filter((row) => (row.resident.rtId ?? '') === group.id)
     return [
@@ -145,7 +158,75 @@ export function buildPaarediData(options: PaarediOptions) {
       '',
     ] as Array<string | number>
   })
-  return { details: details.map((row) => row.cells), summary }
+  return {
+    details: details.map((row) => row.cells),
+    summary,
+    groups: groups.map((group) => ({
+      ...group,
+      rows: details
+        .filter((row) => (row.resident.rtId ?? '') === group.id)
+        .map((row, index) => [index + 1, ...row.cells.slice(1)]),
+    })),
+  }
+}
+
+// Workbook and preview use the same ordered sheets and locally numbered rows.
+export function buildPaarediSheets(options: PaarediOptions) {
+  const data = buildPaarediData(options)
+  const names = new Set<string>(['rekap rt'])
+  function sheetName(label: string) {
+    const base =
+      label
+        .replace(/[\\/*?:\[\]]/g, '-')
+        .replace(/^'+|'+$/g, '')
+        .trim()
+        .slice(0, 31) || 'RT'
+    let name = base
+    let index = 2
+    while (names.has(name.toLowerCase())) {
+      const suffix = ` (${index++})`
+      name = `${base.slice(0, 31 - suffix.length)}${suffix}`
+    }
+    names.add(name.toLowerCase())
+    return name
+  }
+  const effectiveRtId = options.rtId || options.profile?.rtId
+  const groups = data.groups.length
+    ? data.groups
+    : [
+        {
+          id: effectiveRtId ?? '',
+          label: effectiveRtId ? `RT ${effectiveRtId}` : 'RT belum diisi',
+          rows: [],
+        },
+      ]
+  const sheets = groups.map((group) => {
+    return {
+      name: sheetName(group.label),
+      label: group.label,
+      summary: false,
+      rows: group.rows,
+      options: {
+        ...options,
+        rtId: group.id || undefined,
+        residents: options.residents.filter((resident) => (resident.rtId ?? '') === group.id),
+      },
+    }
+  })
+  sheets.push({
+    name: 'Rekap RT',
+    label: 'REKAP PER RT',
+    summary: true,
+    rows: data.summary,
+    options: {
+      ...options,
+      rtId: effectiveRtId,
+      residents: options.residents.filter(
+        (resident) => !effectiveRtId || resident.rtId === effectiveRtId,
+      ),
+    },
+  })
+  return sheets
 }
 
 function regionValue(options: PaarediOptions, type: Region['type']) {
@@ -168,15 +249,21 @@ function regionValue(options: PaarediOptions, type: Region['type']) {
     district: options.profile?.districtId,
     city: options.profile?.cityId,
   }[type as 'rw' | 'village' | 'district' | 'city']
-  const id = ids.size === 1 ? [...ids][0] : profileId
+  const rt = options.regions.find((region) => region.id === (options.rtId || options.profile?.rtId))
+  const rtParentId = rt?.[`${type}Id` as 'rwId' | 'villageId' | 'districtId' | 'cityId']
+  const id = ids.size === 1 ? [...ids][0] : rtParentId || profileId
   return (
     options.regions.find((region) => region.id === id && region.type === type)?.name ??
     (ids.size > 1 ? 'Semua wilayah terpilih' : '')
   )
 }
 
-function createSheet(workbook: ExcelJS.Workbook, options: PaarediOptions, summary: boolean) {
-  const sheet = workbook.addWorksheet(summary ? 'Rekap RT' : 'Rincian Sasaran', {
+function createSheet(
+  workbook: ExcelJS.Workbook,
+  spec: ReturnType<typeof buildPaarediSheets>[number],
+) {
+  const { options, summary, rows } = spec
+  const sheet = workbook.addWorksheet(spec.name, {
     views: [{ showGridLines: false }],
     pageSetup: {
       paperSize: 9,
@@ -198,6 +285,10 @@ function createSheet(workbook: ExcelJS.Workbook, options: PaarediOptions, summar
   sheet.getCell('A1').value = 'DATA SASARAN PAAREDI'
   sheet.getCell('A1').font = { name: 'Arial', size: 12, bold: true }
   sheet.getCell('A1').alignment = { horizontal: 'center' }
+  sheet.mergeCells(`A2:${last}2`)
+  sheet.getCell('A2').value = spec.label
+  sheet.getCell('A2').font = { name: 'Arial', size: 11, bold: true }
+  sheet.getCell('A2').alignment = { horizontal: 'center' }
   for (const [index, [label, type]] of (
     [
       ['RW', 'rw'],
@@ -241,8 +332,6 @@ function createSheet(workbook: ExcelJS.Workbook, options: PaarediOptions, summar
   })
   sheet.getRow(8).height = 23
   sheet.getRow(9).height = 32
-  const data = buildPaarediData(options)
-  const rows = summary ? data.summary : data.details
   const rowCount = Math.max(summary ? 10 : 27, rows.length)
   for (let i = 0; i < rowCount; i++) {
     const row = sheet.getRow(11 + i)
@@ -291,7 +380,6 @@ function createSheet(workbook: ExcelJS.Workbook, options: PaarediOptions, summar
 
 export function createPaarediWorkbook(options: PaarediOptions) {
   const workbook = new ExcelJS.Workbook()
-  createSheet(workbook, options, false)
-  createSheet(workbook, options, true)
+  for (const spec of buildPaarediSheets(options)) createSheet(workbook, spec)
   return workbook
 }

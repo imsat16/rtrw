@@ -1,5 +1,11 @@
 <script setup lang="ts">
-defineProps<{ page: number; pageSize: number; totalItems: number; totalPages: number }>()
+defineProps<{
+  page: number
+  pageSize: number
+  totalItems: number
+  totalPages: number
+  loading?: boolean
+}>()
 const emit = defineEmits<{
   'update:page': [value: number]
   'update:pageSize': [value: number]
@@ -9,11 +15,16 @@ const emit = defineEmits<{
 <template>
   <div class="table-pagination">
     <label>
-      Tampilkan
-      <select :value="pageSize" @change="emit('update:pageSize', Number(($event.target as HTMLSelectElement).value))">
-        <option :value="10">10</option><option :value="25">25</option><option :value="50">50</option>
+      Data per halaman
+      <select
+        aria-label="Data per halaman"
+        :value="pageSize"
+        @change="emit('update:pageSize', Number(($event.target as HTMLSelectElement).value))"
+      >
+        <option :value="10">10</option>
+        <option :value="25">25</option>
+        <option :value="50">50</option>
       </select>
-      data
     </label>
     <span>{{ totalItems }} data · Halaman {{ page }} dari {{ totalPages }}</span>
     <div class="table-actions">
@@ -22,7 +33,7 @@ const emit = defineEmits<{
         type="button"
         aria-label="Halaman sebelumnya"
         title="Halaman sebelumnya"
-        :disabled="page <= 1"
+        :disabled="loading || page <= 1"
         @click="emit('update:page', page - 1)"
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -34,7 +45,7 @@ const emit = defineEmits<{
         type="button"
         aria-label="Halaman berikutnya"
         title="Halaman berikutnya"
-        :disabled="page >= totalPages"
+        :disabled="loading || page >= totalPages"
         @click="emit('update:page', page + 1)"
       >
         <svg aria-hidden="true" viewBox="0 0 24 24">

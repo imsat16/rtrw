@@ -76,6 +76,11 @@ a {
   background: transparent;
 }
 
+.brand-block strong,
+.brand-block span {
+  display: block;
+}
+
 .brand-mark,
 .user-chip span {
   display: grid;
@@ -115,6 +120,7 @@ small {
 
 .main-panel {
   flex: 1;
+  min-width: 0;
   padding: 28px;
 }
 
@@ -434,6 +440,128 @@ table {
 .table-pagination select {
   width: auto;
   min-width: 4.5rem;
+  border: 1px solid #cad3dc;
+  border-radius: 5px;
+  background: #fff;
+  color: inherit;
+  padding: 6px 8px;
+}
+
+.data-list-panel {
+  min-width: 0;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.data-list-panel .sort-button {
+  white-space: nowrap;
+}
+
+.data-list-panel td {
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.data-list-panel td .icon-only-button {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.data-list-panel td.table-actions {
+  display: table-cell;
+  white-space: nowrap;
+}
+
+.data-list-panel td.table-actions button + button {
+  margin-left: 6px;
+}
+
+.list-filters {
+  display: grid;
+  grid-template-columns: minmax(240px, 2fr) repeat(2, minmax(120px, 1fr)) auto;
+  align-items: end;
+  gap: 12px;
+  padding: 16px 0;
+  margin-bottom: 8px;
+  border-top: 1px solid #e3e7eb;
+  border-bottom: 1px solid #e3e7eb;
+}
+
+.list-filters input,
+.list-filters select {
+  min-height: 40px;
+  border-radius: 5px;
+}
+
+.data-list-panel thead {
+  background: #f6f7f8;
+}
+
+.data-list-panel tbody tr:hover {
+  background: #fafbfc;
+}
+
+.table-state {
+  height: 120px;
+  text-align: center;
+  color: #63717d;
+}
+
+.list-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  color: #991b1b;
+}
+
+.data-quality-note {
+  color: #8a5519;
+  font-size: 13px;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: middle;
+  animation: loading-spin 0.7s linear infinite;
+}
+
+@keyframes loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (max-width: 900px) {
+  .list-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+  .list-filters .field:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .list-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .list-filters > button {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: none;
+  }
 }
 
 .pagination-icon-button {
@@ -1186,6 +1314,10 @@ th {
   .icon-only-mobile .action-label,
   .icon-compact-mobile .action-label {
     display: none;
+  }
+
+  .data-list-panel .icon-compact-mobile .action-label {
+    display: inline;
   }
 
   .section-header > div,

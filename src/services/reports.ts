@@ -1,6 +1,12 @@
 import ExcelJS from 'exceljs'
 import { saveAs } from 'file-saver'
-import { buildPaarediData, createPaarediWorkbook, detailLabels } from './paaredi'
+import {
+  buildPaarediData,
+  buildPaarediSheets,
+  createPaarediWorkbook,
+  detailLabels,
+  summaryLabels,
+} from './paaredi'
 import type {
   DashboardStats,
   FamilyCard,
@@ -32,6 +38,12 @@ export interface ReportPreview {
   columns: Array<{ key: string; label: string }>
   rows: Array<Record<string, ReportPreviewCell>>
   totalRows: number
+  sheets?: Array<{
+    name: string
+    columns: ReportPreview['columns']
+    rows: ReportPreview['rows']
+    totalRows: number
+  }>
 }
 
 interface ReportOptions {
@@ -97,6 +109,23 @@ function getReportResidents(options: ReportOptions) {
   return options.residents
 }
 
+function scopeReport(options: ReportOptions): ReportOptions {
+  const rtId = options.rtId || options.profile?.rtId
+  if (!rtId) return options
+  const residents = options.residents.filter((item) => item.rtId === rtId)
+  const residentIds = new Set(residents.map((item) => item.id))
+  return {
+    ...options,
+    rtId,
+    cards: options.cards.filter((item) => item.rtId === rtId),
+    residents,
+    mutations: options.mutations.filter(
+      (item) =>
+        item.rtId === rtId || (!item.rtId && item.residentId && residentIds.has(item.residentId)),
+    ),
+  }
+}
+
 function getReportMutations(options: ReportOptions) {
   const periodPrefix = `${options.period.year}-${String(options.period.month).padStart(2, '0')}`
   const mutations = options.mutations.filter((item) => item.mutationDate.startsWith(periodPrefix))
@@ -125,6 +154,7 @@ function formatMutationType(type: MutationType) {
 }
 
 export function buildReportPreview(options: ReportOptions): ReportPreview {
+  options = scopeReport(options)
   if (options.kind === 'paaredi') {
     const { details } = buildPaarediData(options)
     return {
@@ -133,6 +163,17 @@ export function buildReportPreview(options: ReportOptions): ReportPreview {
         Object.fromEntries(cells.map((value, index) => [String(index), value])),
       ),
       totalRows: details.length,
+      sheets: buildPaarediSheets(options).map((sheet) => ({
+        name: sheet.name,
+        columns: (sheet.summary ? summaryLabels : detailLabels).map((label, index) => ({
+          key: String(index),
+          label,
+        })),
+        rows: sheet.rows.map((cells) =>
+          Object.fromEntries(cells.map((value, index) => [String(index), value])),
+        ),
+        totalRows: sheet.rows.length,
+      })),
     }
   }
   const residents = getReportResidents(options)
@@ -238,6 +279,7 @@ export function buildReportPreview(options: ReportOptions): ReportPreview {
 }
 
 export async function exportReport(options: ReportOptions) {
+  options = scopeReport(options)
   const workbook =
     options.kind === 'paaredi' ? createPaarediWorkbook(options) : new ExcelJS.Workbook()
   if (options.kind !== 'paaredi') {
@@ -276,7 +318,7 @@ export async function exportReport(options: ReportOptions) {
     month: options.period.month,
     year: options.period.year,
     rwId: options.profile?.rwId,
-    rtId: options.profile?.rtId,
+    rtId: options.rtId || options.profile?.rtId,
     totalResidents: options.residents.length,
   })
 }

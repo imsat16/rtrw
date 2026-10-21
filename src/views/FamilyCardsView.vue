@@ -3,8 +3,8 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import AppIcon from '@/components/AppIcon.vue'
 import AppModal from '@/components/AppModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
-import { useClientTable } from '@/composables/useClientTable'
-import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCards, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
+import { useServerTable } from '@/composables/useServerTable'
+import { deleteFamilyCard, ensureFamilyRelationship, listFamilyCardsPage, listFamilyRelationships, listRegions, listResidentsByFamilyCard, saveFamilyCard, saveResident, updateFamilyCard } from '@/services/data'
 import { downloadFamilyImportTemplate } from '@/services/familyImport'
 import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
@@ -33,13 +33,10 @@ type ResidentDraft = {
 
 const auth = useAuthStore()
 const importJob = useFamilyImportStore()
-const cards = ref<FamilyCard[]>([])
 const regions = ref<Region[]>([])
-const loading = ref(false)
 const saving = ref(false)
 const message = ref('')
 const messageError = ref(false)
-const filterOpen = ref(false)
 const formOpen = ref(false)
 const editingId = ref('')
 const detailTarget = ref<FamilyCard | null>(null)
@@ -48,8 +45,7 @@ const detailLoading = ref(false)
 const deleteTarget = ref<FamilyCard | null>(null)
 const bulkImportOpen = ref(false)
 const bulkImportFile = ref<File | null>(null)
-const filters = reactive({ rwId: '', rtId: '', search: '' })
-const filterDraft = reactive({ rwId: '', rtId: '', search: '' })
+const filters = reactive({ rwId: auth.profile?.rwId ?? '', rtId: auth.profile?.rtId ?? '', search: '' })
 const form = reactive({
   kkNumber: '',
   address: '',
@@ -93,7 +89,7 @@ const rwOptions = computed(() => {
   return options.filter((item) => item.id === auth.profile?.rwId)
 })
 const filterRtOptions = computed(() => regions.value.filter(
-  (item) => item.type === 'rt' && (!filterDraft.rwId || item.rwId === filterDraft.rwId),
+  (item) => item.type === 'rt' && (!filters.rwId || item.rwId === filters.rwId),
 ))
 const formRtOptions = computed(() => regions.value.filter(
   (item) => item.type === 'rt' && (!form.rwId || item.rwId === form.rwId),
@@ -108,11 +104,10 @@ function regionOptionLabel(region: Region) {
   return parent ? `${region.name} — ${parent.name}` : region.name
 }
 
-const { page, pageSize, totalPages, paginatedItems, toggleSort, sortIndicator } = useClientTable(
-  cards,
-  'kkNumber',
-  { rw: (item) => regionName(item.rwId), rt: (item) => regionName(item.rtId) },
+const { items: cards, totalItems, page, pageSize, totalPages, loading, error: loadError, reload: loadCards, toggleSort, sortIndicator } = useServerTable(
+  (options) => listFamilyCardsPage(auth.profile, options), () => ({ ...filters }), 'kkNumber',
 )
+
 const detailRows = computed(() => detailTarget.value ? [
   { label: 'Nomor KK', value: detailTarget.value.kkNumber },
   { label: 'Kepala Keluarga', value: detailTarget.value.headName },
@@ -199,37 +194,12 @@ function validateUniqueNiks() {
 function initializeScope() {
   filters.rwId = auth.profile?.rwId ?? ''
   filters.rtId = auth.profile?.rtId ?? ''
-  filterDraft.rwId = filters.rwId
-  filterDraft.rtId = filters.rtId
   form.rwId = auth.profile?.rwId ?? ''
   form.rtId = auth.profile?.rtId ?? ''
 }
 
-async function applyFilters() {
-  Object.assign(filters, filterDraft)
-  await loadCards()
-}
-
-function openFilters() {
-  Object.assign(filterDraft, filters)
-  filterOpen.value = true
-}
-
-async function loadCards() {
-  loading.value = true
-  try {
-    cards.value = await listFamilyCards(auth.profile, filters.rtId || undefined, filters.rwId || undefined, filters.search)
-    filterOpen.value = false
-  } finally {
-    loading.value = false
-  }
-}
-
 function resetFilters() {
-  filters.search = ''
-  initializeScope()
-  filterDraft.search = ''
-  void loadCards()
+  Object.assign(filters, { search: '', rwId: auth.profile?.rwId ?? '', rtId: auth.profile?.rtId ?? '' })
 }
 
 async function submit() {
@@ -399,8 +369,8 @@ watch(() => importJob.completionVersion, async () => {
   }
 })
 
-watch(() => filterDraft.rwId, () => {
-  if (!filterRtOptions.value.some((item) => item.id === filterDraft.rtId)) filterDraft.rtId = ''
+watch(() => filters.rwId, () => {
+  if (!filterRtOptions.value.some((item) => item.id === filters.rtId)) filters.rtId = ''
 })
 watch(() => form.rwId, () => {
   if (!formRtOptions.value.some((item) => item.id === form.rtId)) form.rtId = ''
@@ -414,10 +384,14 @@ function warnBeforeUnload(event: BeforeUnloadEvent) {
 
 onMounted(async () => {
   window.addEventListener('beforeunload', warnBeforeUnload)
-  regions.value = await listRegions(auth.profile)
-  await loadRelationshipOptions()
   initializeScope()
-  await loadCards()
+  await Promise.all([
+    loadCards(), loadRelationshipOptions(),
+    listRegions(auth.profile).then(data => { regions.value = data }).catch(() => {
+      message.value = 'Pilihan wilayah gagal dimuat. Muat ulang halaman untuk mencoba lagi.'
+      messageError.value = true
+    }),
+  ])
 })
 onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnload))
 </script>
@@ -426,14 +400,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
   <section class="content-stack">
     <p v-if="message" :class="messageError ? 'alert' : 'success'">{{ message }}</p>
 
-    <div class="section-panel">
+    <div class="section-panel data-list-panel">
       <div class="section-header">
-        <div><strong>Daftar Kartu Keluarga</strong><span class="badge">{{ cards.length }} KK</span></div>
+        <div><strong>Daftar Kartu Keluarga</strong><span class="badge">{{ totalItems }} KK</span></div>
         <div class="table-actions">
-          <button class="secondary-button action-button icon-compact-mobile" type="button" aria-label="Filter"
-            title="Filter" @click="openFilters">
-            <AppIcon class="action-icon" icon="mdi:filter-variant" /><span class="action-label">Filter</span>
-          </button>
           <button v-if="auth.hasPermission('families.manage')" class="secondary-button action-button icon-compact-mobile"
             type="button" aria-label="Import Excel" title="Import Excel" @click="openBulkImport">
             <AppIcon class="action-icon" icon="mdi:file-excel-outline" /><span class="action-label">Import Excel</span>
@@ -444,7 +414,29 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
           </button>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="list-filters">
+        <div class="field">
+          <label for="kkSearch">Cari kartu keluarga</label>
+          <input id="kkSearch" v-model="filters.search" placeholder="Nomor KK atau nama kepala keluarga" />
+        </div>
+        <div class="field">
+          <label for="filterRw">RW</label>
+          <select id="filterRw" v-model="filters.rwId" :disabled="auth.profile?.role !== 'superadmin'">
+            <option value="">Semua RW</option>
+            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="filterRt">RT</label>
+          <select id="filterRt" v-model="filters.rtId" :disabled="Boolean(auth.profile?.rtId)">
+            <option value="">Semua RT</option>
+            <option v-for="rt in filterRtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option>
+          </select>
+        </div>
+        <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
+      </div>
+      <div v-if="loadError" class="list-error" role="alert">{{ loadError }} <button class="secondary-button" type="button" @click="loadCards">Coba lagi</button></div>
+      <div class="table-wrap" :aria-busy="loading">
         <table>
           <thead>
             <tr>
@@ -452,21 +444,18 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
                 sortIndicator('kkNumber') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('headName')">Kepala Keluarga {{
                 sortIndicator('headName') }}</button></th>
-              <th><button class="sort-button" type="button" @click="toggleSort('memberCount')">Anggota {{
-                sortIndicator('memberCount') }}</button></th>
-              <th><button class="sort-button" type="button" @click="toggleSort('rw')">RW {{ sortIndicator('rw')
-                  }}</button></th>
-              <th><button class="sort-button" type="button" @click="toggleSort('rt')">RT {{ sortIndicator('rt')
-                  }}</button></th>
+              <th>Anggota</th>
+              <th>RW</th>
+              <th>RT</th>
               <th><button class="sort-button" type="button" @click="toggleSort('address')">Alamat {{
                 sortIndicator('address') }}</button></th>
               <th>Aksi</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="card in paginatedItems" :key="card.id">
+            <tr v-for="card in cards" :key="card.id">
               <td>{{ card.kkNumber }}</td>
-              <td>{{ card.headName }}</td>
+              <td><span v-if="card.headName">{{ card.headName }}</span><span v-else class="data-quality-note">Nama perlu diperbaiki</span></td>
               <td>{{ card.memberCount ?? 0 }} orang</td>
               <td>{{ regionName(card.rwId) }}</td>
               <td>{{ regionName(card.rtId) }}</td>
@@ -484,40 +473,17 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', warnBeforeUnloa
                   </button></template>
               </td>
             </tr>
-            <tr v-if="!loading && cards.length === 0">
+            <tr v-if="loading"><td colspan="7" class="table-state" role="status"><span class="loading-spinner" aria-hidden="true"></span> Memuat kartu keluarga…</td></tr>
+            <tr v-if="!loading && !loadError && cards.length === 0">
               <td colspan="7" class="muted">Data KK tidak ditemukan.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="cards.length"
-        :total-pages="totalPages" />
+      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="totalItems"
+        :total-pages="totalPages" :loading="loading" />
     </div>
 
-    <AppModal :open="filterOpen" title="Filter Kartu Keluarga" @close="filterOpen = false">
-      <form class="form-grid modal-form" @submit.prevent="applyFilters">
-        <div class="field">
-          <label for="kkSearch">Cari nomor KK</label>
-          <input id="kkSearch" v-model="filterDraft.search" placeholder="Masukkan nomor KK" />
-        </div>
-        <div class="field">
-          <label for="filterRw">RW</label>
-          <select id="filterRw" v-model="filterDraft.rwId" :disabled="auth.profile?.role !== 'superadmin'">
-            <option value="">Semua RW</option>
-            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="filterRt">RT</label>
-          <select id="filterRt" v-model="filterDraft.rtId" :disabled="Boolean(auth.profile?.rtId)">
-            <option value="">Semua RT</option>
-            <option v-for="rt in filterRtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option>
-          </select>
-        </div>
-        <button class="primary-button" type="submit" :disabled="loading">Cari</button>
-        <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
-      </form>
-    </AppModal>
 
     <AppModal :open="formOpen" :title="editingId ? 'Edit Kartu Keluarga' : 'Tambah Kartu Keluarga'" size="large"
       :loading="saving" @close="formOpen = false">

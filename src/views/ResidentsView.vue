@@ -5,30 +5,28 @@ import AppModal from '@/components/AppModal.vue'
 import AppAutocomplete, { type AutocompleteItem } from '@/components/AppAutocomplete.vue'
 import ItemDetailModal from '@/components/ItemDetailModal.vue'
 import TablePagination from '@/components/TablePagination.vue'
-import { useClientTable } from '@/composables/useClientTable'
-import { deleteResident, listFamilyCards, listMutations, listRegions, listResidents, saveMutation, saveResident } from '@/services/data'
+import { useServerTable } from '@/composables/useServerTable'
+import { deleteResident, listFamilyCards, listRegions, listResidents, listResidentsPage, saveMutation, saveResident } from '@/services/data'
 import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
 import { citizenshipOptions, familyRelationshipOptions } from '@/types/domain'
 import { normalizeFreeTextId } from '@/utils/familyRules'
-import type { FamilyCard, Gender, MutationType, Region, Resident, ResidentMutation, ResidentStatus } from '@/types/domain'
+import type { FamilyCard, Gender, MutationType, Region, Resident, ResidentStatus } from '@/types/domain'
 
 const auth = useAuthStore()
 const importJob = useFamilyImportStore()
 const regions = ref<Region[]>([])
 const cards = ref<FamilyCard[]>([])
-const residents = ref<Resident[]>([])
-const mutations = ref<ResidentMutation[]>([])
+const mutationResidents = ref<Resident[]>([])
+const optionsLoading = ref(false)
 const message = ref('')
 const messageError = ref(false)
-const filterOpen = ref(false)
 const residentFormOpen = ref(false)
 const editingResidentId = ref('')
 const detailTarget = ref<Resident | null>(null)
 const deleteTarget = ref<Resident | null>(null)
 const mutationFormOpen = ref(false)
-const filters = reactive({ rwId: '', rtId: '', search: '' })
-const filterDraft = reactive({ rwId: '', rtId: '', search: '' })
+const filters = reactive({ rwId: auth.profile?.rwId ?? '', rtId: auth.profile?.rtId ?? '', search: '' })
 const residentForm = reactive({
   familyCardId: '', nik: '', fullName: '', gender: 'L' as Gender, birthPlace: '', birthDate: '',
   religion: 'Islam', education: '', occupation: '', maritalStatus: 'Belum Kawin',
@@ -45,10 +43,10 @@ const rwOptions = computed(() => {
   return auth.profile?.role === 'superadmin' ? items : items.filter((item) => item.id === auth.profile?.rwId)
 })
 const rtOptions = computed(() => regions.value.filter(
-  (item) => item.type === 'rt' && (!filterDraft.rwId || item.rwId === filterDraft.rwId),
+  (item) => item.type === 'rt' && (!filters.rwId || item.rwId === filters.rwId),
 ))
 const selectedCard = computed(() => cards.value.find((item) => item.id === residentForm.familyCardId))
-const selectedResident = computed(() => residents.value.find((item) => item.id === mutationForm.residentId))
+const selectedResident = computed(() => mutationResidents.value.find((item) => item.id === mutationForm.residentId))
 const familyCardItems = computed<AutocompleteItem[]>(() => cards.value.map((card) => ({
   value: card.id,
   label: `${card.kkNumber} — ${card.headName}`,
@@ -56,7 +54,9 @@ const familyCardItems = computed<AutocompleteItem[]>(() => cards.value.map((card
   description: card.memberNiks?.length ? `NIK anggota: ${card.memberNiks.join(', ')}` : 'Belum ada anggota',
 })))
 
-const { page, pageSize, totalPages, paginatedItems, toggleSort, sortIndicator } = useClientTable(residents, 'fullName')
+const { items: residents, totalItems, page, pageSize, totalPages, loading, error: loadError, reload: loadData, toggleSort, sortIndicator } = useServerTable(
+  (options) => listResidentsPage(auth.profile, options), () => ({ ...filters }), 'fullName',
+)
 const detailRows = computed(() => detailTarget.value ? [
   { label: 'NIK', value: detailTarget.value.nik },
   { label: 'Nomor KK', value: detailTarget.value.kkNumber },
@@ -83,12 +83,6 @@ function regionOptionLabel(region: Region) {
   return parent ? `${region.name} — ${parent.name}` : region.name
 }
 
-function initializeScope() {
-  filters.rwId = auth.profile?.rwId ?? ''
-  filters.rtId = auth.profile?.rtId ?? ''
-  filterDraft.rwId = filters.rwId
-  filterDraft.rtId = filters.rtId
-}
 
 function resetResidentForm() {
   editingResidentId.value = ''
@@ -101,12 +95,30 @@ function resetResidentForm() {
   })
 }
 
-function openCreateResident() {
-  resetResidentForm()
-  residentFormOpen.value = true
+async function loadFormOptions(forMutation = false) {
+  optionsLoading.value = true
+  try {
+    if (forMutation) mutationResidents.value = await listResidents(auth.profile)
+    else cards.value = await listFamilyCards(auth.profile)
+  } catch (error) {
+    message.value = error instanceof Error ? error.message : 'Gagal memuat pilihan formulir.'
+    messageError.value = true
+  } finally { optionsLoading.value = false }
 }
 
-function editResident(item: Resident) {
+async function openCreateResident() {
+  resetResidentForm()
+  residentFormOpen.value = true
+  await loadFormOptions()
+}
+
+async function openMutation() {
+  mutationForm.residentId = ''
+  mutationFormOpen.value = true
+  await loadFormOptions(true)
+}
+
+async function editResident(item: Resident) {
   editingResidentId.value = item.id
   Object.assign(residentForm, {
     familyCardId: item.familyCardId,
@@ -130,36 +142,11 @@ function editResident(item: Resident) {
     hasKtp: item.hasKtp ?? false,
   })
   residentFormOpen.value = true
-}
-
-async function applyFilters() {
-  Object.assign(filters, filterDraft)
-  await loadData()
-}
-
-function openFilters() {
-  Object.assign(filterDraft, filters)
-  filterOpen.value = true
-}
-
-async function loadData() {
-  const [cardData, residentData, mutationData] = await Promise.all([
-    listFamilyCards(auth.profile, filters.rtId || undefined, filters.rwId || undefined),
-    listResidents(auth.profile, filters.rtId || undefined, filters.rwId || undefined, filters.search),
-    listMutations(auth.profile, filters.rtId || undefined),
-  ])
-  cards.value = cardData
-  residents.value = residentData
-  mutations.value = mutationData
-  if (!cards.value.some((item) => item.id === residentForm.familyCardId)) residentForm.familyCardId = ''
-  filterOpen.value = false
+  await loadFormOptions()
 }
 
 function resetFilters() {
-  filters.search = ''
-  initializeScope()
-  filterDraft.search = ''
-  void loadData()
+  Object.assign(filters, { search: '', rwId: auth.profile?.rwId ?? '', rtId: auth.profile?.rtId ?? '' })
 }
 
 async function submitResident() {
@@ -231,8 +218,8 @@ async function submitMutation() {
   }
 }
 
-watch(() => filterDraft.rwId, () => {
-  if (!rtOptions.value.some((item) => item.id === filterDraft.rtId)) filterDraft.rtId = ''
+watch(() => filters.rwId, () => {
+  if (!rtOptions.value.some((item) => item.id === filters.rtId)) filters.rtId = ''
 })
 
 watch(() => importJob.completionVersion, async () => {
@@ -246,25 +233,25 @@ watch(() => importJob.completionVersion, async () => {
 })
 
 onMounted(async () => {
-  regions.value = await listRegions(auth.profile)
-  initializeScope()
-  await loadData()
+  await Promise.all([
+    loadData(),
+    listRegions(auth.profile).then(data => { regions.value = data }).catch(() => {
+      message.value = 'Pilihan wilayah gagal dimuat. Muat ulang halaman untuk mencoba lagi.'
+      messageError.value = true
+    }),
+  ])
 })
 </script>
 
 <template>
   <section class="content-stack">
     <p v-if="message" :class="messageError ? 'alert' : 'success'">{{ message }}</p>
-    <div class="section-panel">
+    <div class="section-panel data-list-panel">
       <div class="section-header">
-        <div><strong>Daftar Warga</strong><span class="badge">{{ residents.length }} warga</span></div>
+        <div><strong>Daftar Warga</strong><span class="badge">{{ totalItems }} warga</span></div>
         <div class="table-actions">
-          <button class="secondary-button action-button icon-compact-mobile" type="button" aria-label="Filter"
-            title="Filter" @click="openFilters">
-            <AppIcon class="action-icon" icon="mdi:filter-variant" /><span class="action-label">Filter</span>
-          </button>
           <button v-if="auth.hasPermission('families.manage')" class="secondary-button action-button" type="button"
-            @click="mutationFormOpen = true">
+            @click="openMutation">
             <AppIcon class="action-icon" icon="mdi:clipboard-pulse-outline" /><span class="action-label">Catat
               LAMPID</span>
           </button>
@@ -274,7 +261,23 @@ onMounted(async () => {
           </button>
         </div>
       </div>
-      <div class="table-wrap">
+      <div class="list-filters">
+        <div class="field"><label for="residentSearch">Cari warga</label><input id="residentSearch"
+            v-model="filters.search" placeholder="NIK, nama, atau nomor KK" /></div>
+        <div class="field"><label for="residentRw">RW</label><select id="residentRw" v-model="filters.rwId"
+            :disabled="auth.profile?.role !== 'superadmin'">
+            <option value="">Semua RW</option>
+            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option>
+          </select></div>
+        <div class="field"><label for="residentRt">RT</label><select id="residentRt" v-model="filters.rtId"
+            :disabled="Boolean(auth.profile?.rtId)">
+            <option value="">Semua RT</option>
+            <option v-for="rt in rtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option>
+          </select></div>
+        <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
+      </div>
+      <div v-if="loadError" class="list-error" role="alert">{{ loadError }} <button class="secondary-button" type="button" @click="loadData">Coba lagi</button></div>
+      <div class="table-wrap" :aria-busy="loading">
         <table>
           <thead>
             <tr>
@@ -298,10 +301,10 @@ onMounted(async () => {
             </tr>
           </thead>
           <tbody>
-            <tr v-for="resident in paginatedItems" :key="resident.id">
+            <tr v-for="resident in residents" :key="resident.id">
               <td>{{ resident.nik }}</td>
               <td>{{ resident.kkNumber }}</td>
-              <td>{{ resident.fullName }}</td>
+              <td><span v-if="resident.fullName">{{ resident.fullName }}</span><span v-else class="data-quality-note">Nama perlu diperbaiki</span></td>
               <td>{{ resident.familyRelationship }}</td>
               <td>{{ resident.gender }}</td>
               <td>{{ resident.birthPlace }}, {{ resident.birthDate }}</td>
@@ -320,37 +323,21 @@ onMounted(async () => {
                   </button></template>
               </td>
             </tr>
-            <tr v-if="residents.length === 0">
+            <tr v-if="loading"><td colspan="9" class="table-state" role="status"><span class="loading-spinner" aria-hidden="true"></span> Memuat warga…</td></tr>
+            <tr v-if="!loading && !loadError && residents.length === 0">
               <td colspan="9" class="muted">Data warga tidak ditemukan.</td>
             </tr>
           </tbody>
         </table>
       </div>
-      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="residents.length"
-        :total-pages="totalPages" />
+      <TablePagination v-model:page="page" v-model:page-size="pageSize" :total-items="totalItems"
+        :total-pages="totalPages" :loading="loading" />
     </div>
 
-    <AppModal :open="filterOpen" title="Filter Data Warga" @close="filterOpen = false">
-      <form class="form-grid modal-form" @submit.prevent="applyFilters">
-        <div class="field"><label for="residentSearch">Cari warga</label><input id="residentSearch"
-            v-model="filterDraft.search" placeholder="NIK, nama, atau nomor KK" /></div>
-        <div class="field"><label for="residentRw">RW</label><select id="residentRw" v-model="filterDraft.rwId"
-            :disabled="auth.profile?.role !== 'superadmin'">
-            <option value="">Semua RW</option>
-            <option v-for="rw in rwOptions" :key="rw.id" :value="rw.id">{{ regionOptionLabel(rw) }}</option>
-          </select></div>
-        <div class="field"><label for="residentRt">RT</label><select id="residentRt" v-model="filterDraft.rtId"
-            :disabled="Boolean(auth.profile?.rtId)">
-            <option value="">Semua RT</option>
-            <option v-for="rt in rtOptions" :key="rt.id" :value="rt.id">{{ regionOptionLabel(rt) }}</option>
-          </select></div>
-        <button class="primary-button" type="submit">Cari</button>
-        <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
-      </form>
-    </AppModal>
 
     <AppModal :open="residentFormOpen" :title="editingResidentId ? 'Edit Warga' : 'Tambah Warga'" size="large"
       @close="residentFormOpen = false">
+      <p v-if="optionsLoading" class="muted" role="status">Memuat pilihan kartu keluarga…</p>
       <form class="form-grid compact modal-form" @submit.prevent="submitResident">
         <div class="field"><label for="familyCardId">Kartu keluarga</label>
           <AppAutocomplete input-id="familyCardId" v-model="residentForm.familyCardId" :items="familyCardItems"
@@ -412,10 +399,10 @@ onMounted(async () => {
         <div class="field"><label for="hasKtp">Memiliki KTP</label><select id="hasKtp" v-model="residentForm.hasKtp">
             <option :value="false">Tidak</option><option :value="true">Ya</option>
           </select></div>
-        <button class="primary-button" type="submit" :disabled="residentSaving">{{ residentSaving ? 'Menyimpan...' :
+        <button class="primary-button" type="submit" :disabled="residentSaving || optionsLoading">{{ residentSaving ? 'Menyimpan...' :
           (editingResidentId ? 'Simpan Perubahan' : 'Tambah Warga') }}</button>
         <button class="secondary-button" type="button" @click="residentFormOpen = false"
-          :disabled="residentSaving">Batal</button>
+          :disabled="residentSaving || optionsLoading">Batal</button>
       </form>
     </AppModal>
 
@@ -429,11 +416,12 @@ onMounted(async () => {
     </AppModal>
 
     <AppModal :open="mutationFormOpen" title="Catat LAMPID" @close="mutationFormOpen = false">
+      <p v-if="optionsLoading" class="muted" role="status">Memuat pilihan warga…</p>
       <form class="form-grid modal-form" @submit.prevent="submitMutation">
         <div class="field"><label for="residentId">Warga</label><select id="residentId"
             v-model="mutationForm.residentId" required>
             <option value="">Pilih warga</option>
-            <option v-for="resident in residents" :key="resident.id" :value="resident.id">{{ resident.fullName }} - {{
+            <option v-for="resident in mutationResidents" :key="resident.id" :value="resident.id">{{ resident.fullName }} - {{
               resident.nik }}</option>
           </select></div>
         <div class="field"><label for="mutationType">Jenis LAMPID</label><select id="mutationType"
@@ -447,9 +435,9 @@ onMounted(async () => {
         <div class="field"><label for="mutationDate">Tanggal perubahan</label><input id="mutationDate"
             v-model="mutationForm.mutationDate" required type="date" /></div>
         <div class="field"><label for="note">Catatan</label><input id="note" v-model="mutationForm.note" /></div>
-        <button class="primary-button" type="submit" :disabled="mutationSaving">{{ mutationSaving ? 'Menyimpan...' : 'Catat LAMPID' }}</button>
+        <button class="primary-button" type="submit" :disabled="mutationSaving || optionsLoading">{{ mutationSaving ? 'Menyimpan...' : 'Catat LAMPID' }}</button>
         <button class="secondary-button" type="button" @click="mutationFormOpen = false"
-          :disabled="mutationSaving">Batal</button>
+          :disabled="mutationSaving || optionsLoading">Batal</button>
       </form>
     </AppModal>
   </section>
