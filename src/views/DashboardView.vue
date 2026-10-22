@@ -2,6 +2,8 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import type { ChartData, ChartOptions } from 'chart.js'
 import BaseChart from '@/components/BaseChart.vue'
+import AppIcon from '@/components/AppIcon.vue'
+import { RouterLink } from 'vue-router'
 import { listFamilyCards, listMutations, listRegions, listResidents } from '@/services/data'
 import { calculateStats } from '@/services/reports'
 import { useAuthStore } from '@/stores/auth'
@@ -295,9 +297,16 @@ onMounted(async () => {
 
 <template>
   <section class="content-stack dashboard-page">
+    <div class="page-heading">
+      <div><p class="page-kicker">Ringkasan wilayah</p><h2>Dashboard</h2><p class="muted">Pantau data kependudukan dan aktivitas warga di satu tempat.</p></div>
+      <div class="page-actions">
+        <RouterLink v-if="auth.hasPermission('families.view')" class="secondary-button action-button" to="/data-warga"><AppIcon class="action-icon" icon="mdi:account-group-outline" />Data Warga</RouterLink>
+        <RouterLink v-if="auth.hasPermission('reports.view')" class="primary-button action-button" to="/export"><AppIcon class="action-icon" icon="mdi:download-outline" />Export Laporan</RouterLink>
+      </div>
+    </div>
     <p v-if="errorMessage" class="alert">{{ errorMessage }}</p>
     <div class="toolbar dashboard-toolbar">
-      <div><strong>{{ dashboardTitle }}</strong><p class="muted">{{ dashboardDescription }}</p></div>
+      <div class="dashboard-scope-copy"><span class="scope-label"><AppIcon icon="mdi:map-marker-outline" />Wilayah pantauan</span><strong>{{ dashboardTitle }}</strong><p class="muted">{{ dashboardDescription }}</p></div>
       <form class="dashboard-filters" @submit.prevent="applyFilters">
         <div class="field">
           <label for="dashboardRw">RW</label>
@@ -314,16 +323,20 @@ onMounted(async () => {
           </select>
         </div>
         <button class="primary-button" type="submit" :disabled="loading">{{ loading ? 'Memuat...' : 'Terapkan' }}</button>
-        <button class="secondary-button" type="button" :disabled="loading" @click="resetFilters">Reset</button>
+        <button class="secondary-button action-button" type="button" :disabled="loading" @click="resetFilters"><AppIcon class="action-icon" icon="mdi:refresh" />Reset</button>
       </form>
     </div>
 
     <div class="dashboard-grid dashboard-summary">
       <article v-for="item in statItems" :key="item.label" :class="['stat-card', `stat-card--${item.tone}`]">
-        <span>{{ item.label }}</span><strong>{{ loading ? '...' : item.value.toLocaleString('id-ID') }}</strong>
+        <div class="stat-card-heading"><span>{{ item.label }}</span><span class="stat-icon"><AppIcon :icon="({ teal: 'mdi:card-account-details-outline', blue: 'mdi:account-group-outline', 'blue-soft': 'mdi:human-male', purple: 'mdi:human-female', 'teal-soft': 'mdi:home-account', amber: 'mdi:account-clock-outline' })[item.tone] ?? 'mdi:account-outline'" /></span></div>
+        <strong>{{ loading ? '...' : item.value.toLocaleString('id-ID') }}</strong>
+        <small>{{ item.tone === 'teal' ? 'Kartu keluarga terdaftar' : 'Warga dalam wilayah terpilih' }}</small>
       </article>
     </div>
 
+    <div class="section-heading"><div><h3>Statistik kependudukan</h3><p class="muted">Komposisi dan perkembangan warga sesuai wilayah terpilih.</p></div><span class="badge"><span class="status-dot" />Data wilayah terpilih</span></div>
+    <div v-if="loading" class="dashboard-loading" role="status"><span class="loading-pulse" />Memuat statistik wilayah...</div>
     <div v-if="!loading" class="charts-grid">
       <article v-if="groupType" class="chart-card chart-card--wide">
         <header><div><strong>{{ scopeChartTitle }}</strong><p class="muted">Jumlah warga dan KK berdasarkan wilayah kerja.</p></div></header>
@@ -361,7 +374,7 @@ onMounted(async () => {
         </div>
       </article>
 
-      <article class="chart-card">
+      <article class="chart-card chart-card--wide">
         <header><div><strong>Kelompok usia dan jenis kelamin</strong><p class="muted">Total laki-laki dan perempuan pada setiap rentang usia.</p></div></header>
         <BaseChart type="bar" :data="ageChart" :options="stackedBarOptions" label="Sebaran laki-laki dan perempuan berdasarkan kelompok usia" />
         <div class="chart-summary-table">
@@ -373,9 +386,9 @@ onMounted(async () => {
         </div>
       </article>
 
-      <article class="chart-card">
+      <article class="chart-card chart-card--lampid">
         <header><div><strong>Tren LAMPID 6 bulan</strong><p class="muted">Lahir, meninggal, pindah, datang, dan ibu hamil sesuai wilayah akun.</p></div></header>
-        <p class="muted">Akte, KIA, dan KTP menunjukkan jumlah pemilik dokumen saat ini pada bulan berjalan. — berarti riwayat belum tersedia. Total LAMPID menghitung kejadian lahir, datang, pindah, meninggal, dan ibu hamil.</p>
+        <p class="muted lampid-note"><AppIcon icon="mdi:information-outline" />Akte, KIA, dan KTP menunjukkan jumlah pemilik dokumen saat ini pada bulan berjalan. — berarti riwayat belum tersedia. Total LAMPID menghitung kejadian lahir, datang, pindah, meninggal, dan ibu hamil.</p>
         <BaseChart type="line" :data="mutationChart" :options="lineOptions" label="Tren LAMPID enam bulan terakhir dan kepemilikan Akte, KIA, KTP saat ini" />
         <div class="chart-summary-table">
           <table>

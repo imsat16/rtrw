@@ -244,11 +244,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <section class="content-stack">
+  <section class="content-stack residents-page">
+    <div class="page-heading"><div><p class="page-kicker">Kependudukan</p><h2>Data Warga</h2><p class="muted">Kelola identitas, data keluarga, dan perubahan penduduk.</p></div><span class="page-context"><AppIcon icon="mdi:shield-check-outline" />Sesuai wilayah akun Anda</span></div>
     <p v-if="message" :class="messageError ? 'alert' : 'success'">{{ message }}</p>
-    <div class="section-panel data-list-panel">
+    <div class="section-panel residents-panel data-list-panel">
       <div class="section-header">
-        <div><strong>Daftar Warga</strong><span class="badge">{{ totalItems }} warga</span></div>
+        <div class="table-heading"><div class="table-heading-title"><strong>Daftar warga</strong><span class="badge">{{ totalItems.toLocaleString('id-ID') }} warga</span></div><p class="muted">Data penduduk yang tercatat di wilayah Anda.</p></div>
         <div class="table-actions">
           <button v-if="auth.hasPermission('families.manage')" class="secondary-button action-button" type="button"
             @click="openMutation">
@@ -262,8 +263,10 @@ onMounted(async () => {
         </div>
       </div>
       <div class="list-filters">
-        <div class="field"><label for="residentSearch">Cari warga</label><input id="residentSearch"
-            v-model="filters.search" placeholder="NIK, nama, atau nomor KK" /></div>
+        <div class="field"><label for="residentSearch">Cari warga</label><div class="resident-search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+          <input id="residentSearch" v-model="filters.search" placeholder="NIK, nama, atau nomor KK" />
+        </div></div>
         <div class="field"><label for="residentRw">RW</label><select id="residentRw" v-model="filters.rwId"
             :disabled="auth.profile?.role !== 'superadmin'">
             <option value="">Semua RW</option>
@@ -277,16 +280,17 @@ onMounted(async () => {
         <button class="secondary-button" type="button" @click="resetFilters">Reset</button>
       </div>
       <div v-if="loadError" class="list-error" role="alert">{{ loadError }} <button class="secondary-button" type="button" @click="loadData">Coba lagi</button></div>
-      <div class="table-wrap" :aria-busy="loading">
+      <p class="table-scroll-hint"><AppIcon icon="mdi:information-outline" />Geser tabel untuk melihat seluruh kolom. Tombol aksi tetap tersedia di kanan.</p>
+      <div class="table-wrap residents-table-wrap" :aria-busy="loading" tabindex="0" aria-label="Daftar warga, geser untuk melihat seluruh kolom">
         <table>
           <thead>
             <tr>
+              <th><button class="sort-button" type="button" @click="toggleSort('fullName')">Nama {{
+                sortIndicator('fullName') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('nik')">NIK {{ sortIndicator('nik')
                   }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('kkNumber')">No. KK {{
                 sortIndicator('kkNumber') }}</button></th>
-              <th><button class="sort-button" type="button" @click="toggleSort('fullName')">Nama {{
-                sortIndicator('fullName') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('familyRelationship')">Hubungan {{
                 sortIndicator('familyRelationship') }}</button></th>
               <th><button class="sort-button" type="button" @click="toggleSort('gender')">JK {{ sortIndicator('gender')
@@ -302,15 +306,15 @@ onMounted(async () => {
           </thead>
           <tbody>
             <tr v-for="resident in residents" :key="resident.id">
-              <td>{{ resident.nik }}</td>
-              <td>{{ resident.kkNumber }}</td>
-              <td><span v-if="resident.fullName">{{ resident.fullName }}</span><span v-else class="data-quality-note">Nama perlu diperbaiki</span></td>
-              <td>{{ resident.familyRelationship }}</td>
-              <td>{{ resident.gender }}</td>
-              <td>{{ resident.birthPlace }}, {{ resident.birthDate }}</td>
-              <td>{{ resident.residentStatus }}</td>
-              <td>{{ resident.address }}</td>
-              <td class="table-actions"><button class="secondary-button action-button icon-only-button" type="button"
+              <td class="resident-name-cell"><div class="resident-name"><span class="resident-avatar" aria-hidden="true">{{ resident.fullName ? resident.fullName.slice(0, 2).toUpperCase() : '?' }}</span><strong v-if="resident.fullName">{{ resident.fullName }}</strong><span v-else class="data-quality-note">Nama perlu diperbaiki</span></div></td>
+              <td class="identity-cell">{{ resident.nik }}</td>
+              <td class="identity-cell">{{ resident.kkNumber }}</td>
+              <td><span class="relationship-badge">{{ resident.familyRelationship }}</span></td>
+              <td><span class="gender-label">{{ resident.gender }}</span></td>
+              <td class="birth-cell"><span>{{ resident.birthPlace }}</span><small>{{ resident.birthDate }}</small></td>
+              <td><span :class="['badge', 'resident-status', resident.residentStatus === 'tetap' ? 'resident-status--permanent' : 'resident-status--temporary']"><span class="status-dot" />{{ resident.residentStatus === 'tetap' ? 'Tetap' : 'Sementara' }}</span></td>
+              <td class="resident-address">{{ resident.address }}</td>
+              <td class="resident-action-cell"><div class="table-actions"><button class="secondary-button action-button icon-only-button" type="button"
                   aria-label="Lihat detail" title="Lihat detail" @click="detailTarget = resident">
                   <AppIcon class="action-icon" icon="mdi:eye-outline" /><span class="action-label">Lihat</span>
                 </button><template v-if="auth.hasPermission('families.manage')"><button
@@ -320,12 +324,12 @@ onMounted(async () => {
                   </button><button class="danger-button action-button icon-only-button" type="button"
                     aria-label="Hapus warga" title="Hapus warga" @click="deleteTarget = resident">
                     <AppIcon class="action-icon" icon="mdi:trash-can-outline" /><span class="action-label">Hapus</span>
-                  </button></template>
+                  </button></template></div>
               </td>
             </tr>
             <tr v-if="loading"><td colspan="9" class="table-state" role="status"><span class="loading-spinner" aria-hidden="true"></span> Memuat warga…</td></tr>
             <tr v-if="!loading && !loadError && residents.length === 0">
-              <td colspan="9" class="muted">Data warga tidak ditemukan.</td>
+              <td colspan="9" class="table-empty"><AppIcon icon="mdi:account-search-outline" /><strong>Data warga tidak ditemukan.</strong><p class="muted">Coba ubah kata kunci atau filter wilayah Anda.</p></td>
             </tr>
           </tbody>
         </table>
@@ -338,7 +342,8 @@ onMounted(async () => {
     <AppModal :open="residentFormOpen" :title="editingResidentId ? 'Edit Warga' : 'Tambah Warga'" size="large"
       @close="residentFormOpen = false">
       <p v-if="optionsLoading" class="muted" role="status">Memuat pilihan kartu keluarga…</p>
-      <form class="form-grid compact modal-form" @submit.prevent="submitResident">
+      <form class="form-grid compact modal-form resident-form" @submit.prevent="submitResident">
+        <div class="form-section-label"><span class="form-section-number">01</span><div><strong>Identitas warga</strong><p class="muted">Lengkapi data sesuai dokumen kependudukan.</p></div></div>
         <div class="field"><label for="familyCardId">Kartu keluarga</label>
           <AppAutocomplete input-id="familyCardId" v-model="residentForm.familyCardId" :items="familyCardItems"
             placeholder="Cari nomor KK, NIK, atau kepala keluarga" empty-text="Kartu keluarga tidak ditemukan"
@@ -379,6 +384,7 @@ onMounted(async () => {
             v-model="residentForm.citizenship">
             <option v-for="option in citizenshipOptions" :key="option" :value="option">{{ option }}</option>
           </select></div>
+        <div class="form-section-label"><span class="form-section-number">02</span><div><strong>Keluarga &amp; kependudukan</strong><p class="muted">Informasi orang tua dan status tempat tinggal.</p></div></div>
         <div class="field"><label for="fatherName">Nama ayah</label><input id="fatherName"
             v-model="residentForm.fatherName" /></div>
         <div class="field"><label for="motherName">Nama ibu</label><input id="motherName"
@@ -390,6 +396,7 @@ onMounted(async () => {
             <option value="tetap">Tetap</option>
             <option value="sementara">Sementara/Musiman</option>
           </select></div>
+        <div class="form-section-label"><span class="form-section-number">03</span><div><strong>Kepemilikan dokumen</strong><p class="muted">Pilih status dokumen yang dimiliki warga.</p></div></div>
         <div class="field"><label for="hasBirthCertificate">Memiliki Akte</label><select id="hasBirthCertificate" v-model="residentForm.hasBirthCertificate">
             <option :value="false">Tidak</option><option :value="true">Ya</option>
           </select></div>
@@ -399,10 +406,10 @@ onMounted(async () => {
         <div class="field"><label for="hasKtp">Memiliki KTP</label><select id="hasKtp" v-model="residentForm.hasKtp">
             <option :value="false">Tidak</option><option :value="true">Ya</option>
           </select></div>
-        <button class="primary-button" type="submit" :disabled="residentSaving || optionsLoading">{{ residentSaving ? 'Menyimpan...' :
+        <div class="modal-actions resident-form-actions"><button class="primary-button" type="submit" :disabled="residentSaving || optionsLoading">{{ residentSaving ? 'Menyimpan...' :
           (editingResidentId ? 'Simpan Perubahan' : 'Tambah Warga') }}</button>
         <button class="secondary-button" type="button" @click="residentFormOpen = false"
-          :disabled="residentSaving || optionsLoading">Batal</button>
+          :disabled="residentSaving || optionsLoading">Batal</button></div>
       </form>
     </AppModal>
 

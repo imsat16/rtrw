@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
 import AppIcon from '@/components/AppIcon.vue'
+import NavigationIcon from '@/components/NavigationIcon.vue'
 import FamilyImportProgress from '@/components/FamilyImportProgress.vue'
 import { useFamilyImportStore } from '@/stores/familyImport'
 import { useAuthStore } from '@/stores/auth'
@@ -69,22 +70,26 @@ async function handleLogout() {
   <div class="app-shell">
     <aside v-if="auth.isAuthenticated && !isStandalonePage" class="sidebar">
       <div class="brand-block">
-        <div class="brand-mark">RW</div>
+        <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3z M9 20v-7h6v7 M7 10h.01 M17 10h.01" /></svg></div>
         <div>
-          <strong>Data Warga</strong>
-          <span>RT/RW Digital</span>
+          <strong>RT/RW Digital</strong>
+          <span>Administrasi kependudukan</span>
         </div>
       </div>
 
-      <nav class="nav-list">
+      <nav class="nav-list" aria-label="Navigasi utama">
         <template v-for="item in navItems" :key="item.to">
-          <RouterLink v-if="canShowLink(item.permission)" :to="item.to">
-            {{ item.label }}
-          </RouterLink>
+          <template v-if="canShowLink(item.permission)">
+            <p v-if="item.to === '/'" class="nav-group-label">Ruang kerja</p>
+            <p v-if="item.to === '/kartu-keluarga'" class="nav-group-label">Kependudukan</p>
+            <p v-if="item.to === '/pengaturan'" class="nav-group-label">Preferensi</p>
+            <RouterLink :to="item.to"><NavigationIcon :path="item.to" /><span>{{ item.label }}</span></RouterLink>
+          </template>
         </template>
       </nav>
 
-      <button class="secondary-button full-width" type="button" :disabled="importJob.busy" :title="importJob.busy ? 'Tunggu impor selesai sebelum keluar' : undefined" @click="handleLogout">Keluar</button>
+      <div class="sidebar-footer"><span class="workspace-label"><span class="workspace-dot" /> Ruang kerja RT/RW</span></div>
+      <button class="secondary-button full-width sidebar-logout" type="button" :disabled="importJob.busy" :title="importJob.busy ? 'Tunggu impor selesai sebelum keluar' : undefined" @click="handleLogout">Keluar</button>
     </aside>
 
     <div
@@ -96,20 +101,23 @@ async function handleLogout() {
       <aside class="mobile-drawer" @click.stop>
         <div class="mobile-drawer-header">
           <div class="brand-block">
-            <div class="brand-mark">RW</div>
+            <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 10 9-7 9 7v10H3z M9 20v-7h6v7 M7 10h.01 M17 10h.01" /></svg></div>
             <div>
-              <strong>Data Warga</strong>
-              <span>RT/RW Digital</span>
+              <strong>RT/RW Digital</strong>
+              <span>Administrasi kependudukan</span>
             </div>
           </div>
           <button class="secondary-button" type="button" aria-label="Tutup menu" @click="closeMobileDrawer">Tutup</button>
         </div>
 
-        <nav class="nav-list">
+        <nav class="nav-list" aria-label="Navigasi utama">
           <template v-for="item in navItems" :key="`mobile-${item.to}`">
-            <RouterLink v-if="canShowLink(item.permission)" :to="item.to" @click="closeMobileDrawer">
-              {{ item.label }}
-            </RouterLink>
+            <template v-if="canShowLink(item.permission)">
+              <p v-if="item.to === '/'" class="nav-group-label">Ruang kerja</p>
+              <p v-if="item.to === '/kartu-keluarga'" class="nav-group-label">Kependudukan</p>
+              <p v-if="item.to === '/pengaturan'" class="nav-group-label">Preferensi</p>
+              <RouterLink :to="item.to" @click="closeMobileDrawer"><NavigationIcon :path="item.to" /><span>{{ item.label }}</span></RouterLink>
+            </template>
           </template>
         </nav>
 
@@ -130,20 +138,38 @@ async function handleLogout() {
             <AppIcon class="action-icon" icon="mdi:menu" />
           </button>
           <div>
-          <p class="eyebrow">Sistem administrasi kependudukan</p>
+          <p class="eyebrow">Ruang kerja <span aria-hidden="true">/</span></p>
           <h1>{{ route.meta.title ?? 'Dashboard' }}</h1>
           </div>
         </div>
-        <div class="user-chip">
-          <span>{{ initials }}</span>
-          <div>
-            <strong>{{ auth.profile?.displayName }}</strong>
-            <small>{{ auth.roleLabel }}</small>
-          </div>
+        <div class="topbar-actions">
+          <RouterLink v-if="auth.hasPermission('families.view')" class="header-search" to="/data-warga" aria-label="Buka pencarian NIK atau nama di Data Warga">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="m16 16 4 4" /></svg>
+            <span>Cari NIK atau nama...</span><span class="search-destination">Warga</span>
+          </RouterLink>
+          <details class="header-popover">
+            <summary class="header-icon-button" aria-label="Pemberitahuan" title="Pemberitahuan">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9 M10 21h4" /></svg>
+              <span v-if="importJob.busy" class="notification-dot" />
+            </summary>
+            <div class="header-popover-panel notification-panel"><strong>Pemberitahuan</strong><p class="muted">{{ importJob.busy ? 'Import kartu keluarga sedang diproses. Lihat perkembangannya pada panel import.' : 'Tidak ada proses import yang berjalan.' }}</p></div>
+          </details>
+          <details class="header-popover profile-popover">
+            <summary class="user-chip" aria-label="Menu profil pengguna">
+              <span class="user-avatar">{{ initials }}</span>
+              <div><strong>{{ auth.profile?.displayName }}</strong><small>{{ auth.roleLabel }}</small></div>
+              <svg class="profile-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+            </summary>
+            <div class="header-popover-panel profile-panel">
+              <strong>{{ auth.profile?.displayName }}</strong><span class="badge role-badge">{{ auth.roleLabel }}</span>
+              <RouterLink to="/pengaturan"><NavigationIcon path="/pengaturan" />Pengaturan akun</RouterLink>
+              <button type="button" :disabled="importJob.busy" @click="handleLogout">Keluar dari akun</button>
+            </div>
+          </details>
         </div>
       </header>
 
-      <RouterView />
+      <div :class="{ 'workspace-content': auth.isAuthenticated && !isStandalonePage }"><RouterView /></div>
       <FamilyImportProgress />
     </main>
   </div>
